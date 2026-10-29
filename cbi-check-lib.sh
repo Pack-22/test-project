@@ -6,7 +6,7 @@
 #  หลักการ : อ่านอย่างเดียว ไม่หยุด/start/แก้ไฟล์ของระบบ ; ไม่พิมพ์ password / secret
 # =============================================================================
 
-LIB_VERSION="3.1.2"
+LIB_VERSION="3.1.3"
 set -o pipefail
 
 # ---------- สี / ตัวนับ ----------
@@ -54,6 +54,7 @@ parse_common_args() {
 ask() {
   local var="$1" q="$2" def="$3" type="${4:-text}" cur ans opt=0
   cur="${!var-$def}"
+  if [ -z "${_ASK_HINT:-}" ] && [ "$ASSUME_YES" != "1" ]; then _ASK_HINT=1; echo "(ค่าที่แสดงไว้แล้ว : Enter = ใช้ค่านั้น ; ต้องการพิมพ์ใหม่ กด Ctrl+U ลบก่อน)"; fi
   case "$type" in *\?) opt=1; type="${type%\?}";; esac
   while :; do
     if [ "$ASSUME_YES" = "1" ] || [ ! -r /dev/tty ]; then
@@ -67,11 +68,13 @@ ask() {
       echo "  ต้องระบุค่า"; [ "$ASSUME_YES" = "1" ] && { echo "  (-y) ไม่มีค่า: $var"; exit 2; }; continue
     fi
     case "$type" in
-      dir)  [ -d "$ans" ] && break; echo "  ไม่พบโฟลเดอร์: $ans" ;;
-      file) [ -f "$ans" ] && break; echo "  ไม่พบไฟล์: $ans" ;;
+      dir)  [ -d "$ans" ] && break; _nf "ไม่พบโฟลเดอร์" "$ans" ;;
+      file) [ -f "$ans" ] && break; _nf "ไม่พบไฟล์" "$ans" ;;
       *) break ;;
     esac
-    [ "$opt" = "1" ] && [ "$ASSUME_YES" != "1" ] && echo "  (ข้อนี้เว้นว่างได้ — ลบข้อความด้วย Ctrl+U แล้วกด Enter)"
+    if [ "$opt" = "1" ] && [ "$ASSUME_YES" != "1" ]; then
+      echo "  (ข้อนี้เว้นว่างได้ — ลบข้อความด้วย Ctrl+U แล้วกด Enter)"; cur=""; continue
+    fi
     if [ "$ASSUME_YES" = "1" ]; then
       if [ "$opt" = "1" ]; then echo "  (-y) ไม่พบ $ans — ข้าม $var"; ans=""; break; fi
       echo "  (-y) path ไม่ถูกต้อง: $var=$ans"; exit 2
@@ -82,6 +85,7 @@ ask() {
   ANSWERS+=("$var=$ans")
 }
 ANSWERS=()
+_nf() { case "$2" in /*|./*|../*) echo "  $1: $2" ;; *) echo "  $1 (ค่าที่ใส่ไม่ใช่ path — ใส่ path เต็ม เช่น /home/... )" ;; esac; }
 
 # ---------- รายงาน / ไฟล์ผลการตรวจ ----------
 # start_report "ชื่อการตรวจ"
@@ -100,7 +104,10 @@ start_report() {
   RUN_START_EPOCH=$(date +%s)
   REPORT_DIR="${REPORT_DIR:-$PWD}"
   # กันการเขียนผลลงโฟลเดอร์ของระบบ (เช่น webapps/ — Tomcat จะ deploy โฟลเดอร์ใหม่เป็นแอป)
-  local rd; rd=$(cd "$REPORT_DIR" 2>/dev/null && pwd -P) || { echo "ไม่พบโฟลเดอร์เก็บผล $REPORT_DIR"; exit 2; }
+  local rd; rd=$(readlink -f -- "$REPORT_DIR" 2>/dev/null)
+  [ -n "$rd" ] && [ -d "$rd" ] || { echo "ไม่พบโฟลเดอร์เก็บผล $REPORT_DIR"; exit 2; }
+  [ -w "$rd" ] || { echo "เขียนโฟลเดอร์ $rd ไม่ได้ ($(stat -c '%U:%G %a' "$rd")) — รันจากโฟลเดอร์ของตัวเอง เช่น ~/check"; exit 2; }
+  REPORT_DIR="$rd"
   case "$rd/" in
     */webapps/*|*/work/Catalina/*|*/temp/*|*/conf/*|*/WEB-INF/*|*/dataguard/*|*/pending-jobs/*|*/policycached/*|*/dataconnector/*|*/cred/*|/etc/*|/proc/*|/sys/*|/)
       echo "ห้ามเก็บผลการตรวจใน $rd (เป็นโฟลเดอร์ของระบบ / agent) — cd ไปโฟลเดอร์อื่น เช่น ~/check แล้วรันใหม่"; exit 2 ;;
@@ -108,7 +115,7 @@ start_report() {
   umask 077
   OUT_DIR="$REPORT_DIR/${CHECK_NAME}_${RUN_HOST}_${RUN_TS}"
   mkdir -p "$OUT_DIR/evidence" || { echo "สร้างโฟลเดอร์ $OUT_DIR ไม่ได้ (สิทธิ์?) — รันจากโฟลเดอร์ที่เขียนได้ หรือตั้ง REPORT_DIR=/path"; exit 2; }
-  OUT_DIR=$(cd "$OUT_DIR" && pwd); EVID="$OUT_DIR/evidence"
+  EVID="$OUT_DIR/evidence"
   REPORT="$OUT_DIR/report.log"; RESULTS="$OUT_DIR/results.csv"
   printf '\xEF\xBB\xBF"time","check","section","status","message","got","next"\n' > "$RESULTS"
   exec > >(tee >(sed -u 's/\x1b\[[0-9;]*m//g' > "$REPORT")) 2>&1

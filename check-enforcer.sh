@@ -11,7 +11,7 @@
 #  ใช้   : ./check-enforcer.sh   |  ./check-enforcer.sh -y
 #  ผล   : <โฟลเดอร์ที่รันสคริปต์>/enforcer_<host>_<เวลา>/  (report.log, results.csv, summary.txt, evidence/ …)
 # =============================================================================
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+SCRIPT_DIR=$(dirname "$(readlink -f -- "$0")")
 . "$SCRIPT_DIR/cbi-check-lib.sh" || { echo "ไม่พบ cbi-check-lib.sh ใน $SCRIPT_DIR"; exit 2; }
 REPORT_DIR="${REPORT_DIR:-$PWD}"     # ผลการตรวจเก็บในโฟลเดอร์ที่รันสคริปต์
 parse_common_args "$@"

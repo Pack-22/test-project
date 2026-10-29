@@ -17,7 +17,7 @@
 #  ค่าลับ : คอลัมน์ / แถวที่มีคำว่า password, secret, pwd, token, apikey, private, credential
 #           ถูกปิดบางส่วน เช่น fd64***a147(36) ; สั้นกว่า 8 ตัว = ***(n) ; MASK_MODE=full = ซ่อนทั้งหมด
 # =============================================================================
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+SCRIPT_DIR=$(dirname "$(readlink -f -- "$0")")
 . "$SCRIPT_DIR/cbi-check-lib.sh" || { echo "ไม่พบ cbi-check-lib.sh ใน $SCRIPT_DIR"; exit 2; }
 REPORT_DIR="${REPORT_DIR:-$PWD}"     # ผลการตรวจเก็บในโฟลเดอร์ที่รันสคริปต์
 parse_common_args "$@"
@@ -30,6 +30,7 @@ SCREEN_WIDTH="${SCREEN_WIDTH:-60}"      # ความยาวสูงสุ�
 
 # ---------- credential ----------
 echo "=== ตรวจ Database ของ CUBIKA — ระบุค่า (Enter = ใช้ค่าที่แสดง) ==="
+echo "ข้อแรกใส่ path ของไฟล์ credential เท่านั้น — ไม่มีไฟล์ให้กด Enter แล้วสคริปต์จะถาม host / port / user / password แยกทีละข้อ"
 DEF_CNF=""; [ -f "$HOME/.cubika-db.cnf" ] && DEF_CNF="$HOME/.cubika-db.cnf"
 ask DB_CNF "ไฟล์ credential mysql [client] (ว่าง = กรอก host/user/password เอง)" "$DEF_CNF" "file?"
 TMPCNF=""
@@ -58,7 +59,8 @@ IDENT_RE='^[A-Za-z0-9_$-]{1,64}$'   # ชื่อ database / ตารางท
 # ---------- เลือก database ----------
 CONN_ERR=""; DB_ALL=()
 r=$(q "SELECT 1;")
-if echo "$r" | grep -qiE "^ERROR|denied|Can't connect"; then CONN_ERR="$r"
+if [ "$r" != "1" ]; then CONN_ERR=$(_m "$r" | head -3)
+  echo "ต่อ DB ไม่ได้ :"; echo "$CONN_ERR" | sed 's/^/   /'; DATA_TABLES=""; DATA_LIMIT=200; BASELINE=""
 else
   mapfile -t DB_ALL < <(q "SHOW DATABASES;" | grep -vxE 'information_schema|performance_schema|mysql|sys')
   DEF_DB=$(q "SELECT IFNULL(DATABASE(),'');")
@@ -69,10 +71,10 @@ else
   [ -z "$DEF_DB" ] && [ "${#DB_ALL[@]}" -eq 1 ] && DEF_DB="${DB_ALL[0]}"
   ask DB_PICK "database ที่จะตรวจ (ชื่อหรือเลข คั่นด้วย , ; all = ทุกตัว)" "$DEF_DB" text
 fi
-ask DATA_TABLES "ตารางที่ต้องการดูข้อมูล (คั่นด้วย , ; ว่าง = ไม่ดู)" "SYS_CONFIG" "text?"
-ask DATA_LIMIT  "จำนวนแถวสูงสุดต่อตาราง"                       "200" text
+[ -z "$CONN_ERR" ] && ask DATA_TABLES "ตารางที่ต้องการดูข้อมูล (คั่นด้วย , ; ว่าง = ไม่ดู)" "SYS_CONFIG" "text?"
+[ -z "$CONN_ERR" ] && ask DATA_LIMIT  "จำนวนแถวสูงสุดต่อตาราง"                       "200" text
 LAST_DB=$(ls -1d "$PWD"/db_*_*/db_snapshot 2>/dev/null | sort | tail -1 | xargs -r dirname)
-ask BASELINE    "โฟลเดอร์ผลการตรวจ DB รอบก่อนเพื่อเทียบ (ว่าง = ไม่เทียบ)" "$LAST_DB" "dir?"
+[ -z "$CONN_ERR" ] && ask BASELINE    "โฟลเดอร์ผลการตรวจ DB รอบก่อนเพื่อเทียบ (ว่าง = ไม่เทียบ)" "$LAST_DB" "dir?"
 
 # แปลงคำตอบเป็นรายชื่อ database
 DBS=()

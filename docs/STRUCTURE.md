@@ -16,7 +16,8 @@ cbi-check/
 ├── check-cubika.sh
 ├── check-portal.sh
 ├── check-enforcer.sh
-└── check-proxy.sh
+├── check-proxy.sh
+└── check-passthrough.sh     ไล่ทั้ง flow ของ Passthrough (รันบนเครื่อง agent / platform / portal)
 ```
 
 `check-*.sh` ต้องอยู่โฟลเดอร์เดียวกับ `cbi-check-lib.sh` (หาจากตำแหน่งของสคริปต์เอง — เรียกจากโฟลเดอร์ไหนก็ได้)
@@ -70,6 +71,12 @@ cbi-check/
 │   ├── dns_public_host.txt                    (เมื่อระบุ PUBLIC_HOST)
 │   └── sha256.txt  markers.tsv  ls_agent_dir.txt  urls_in_config.txt  urls_tested.tsv
 │       process_java.txt  ports_listen.txt  permissions.tsv  disk.txt
+│
+├── passthrough_<host>_<เวลา>/evidence/
+│   ├── config/proxy.properties  portal_authentication.properties  portal_app.properties
+│   ├── proxy_since_last_start.log  proxy_entra_jwt.log  process_proxy.txt  ports_listen.txt
+│   ├── platform_download.log  portal_aad.log
+│   └── tcp_tested.tsv  urls_tested.tsv  permissions.tsv
 │
 └── proxy_<host>_<เวลา>/evidence/
     ├── config/proxy.properties  portal_authentication.properties

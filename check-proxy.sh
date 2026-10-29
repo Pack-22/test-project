@@ -27,9 +27,9 @@ while read -r pid; do
   a=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null); c=$(echo "$a" | grep -oE -- '-Dproxy\.config=[^ ]+' | cut -d= -f2-)
   echo "$c" | grep -q "/dataguard/proxy/[^/]*/proxy.properties" && continue
   PPID_="$pid"; PCFG="$c"; break
-done < <(java_pids "db-security-proxy")
+done < <(java_pids "$PROXY_PAT")
 DEF_DIR=$(readlink "/proc/$PPID_/cwd" 2>/dev/null || echo "$HOME/sw_install/agent-dataguard")
-DEF_JAR=$(tr '\0' '\n' < "/proc/$PPID_/cmdline" 2>/dev/null | grep -m1 'db-security-proxy.*\.jar' | xargs -r basename)
+DEF_JAR=$(tr '\0' '\n' < "/proc/$PPID_/cmdline" 2>/dev/null | grep -m1 -E '(db-security-proxy|dataguard-proxy)[^/]*\.jar$' | xargs -r basename)
 DEF_LOG=$(readlink "/proc/$PPID_/fd/1" 2>/dev/null); case "$DEF_LOG" in /*) ;; *) DEF_LOG="$DEF_DIR/db-security-proxy.log";; esac
 ask PROXY_DIR   "โฟลเดอร์ที่วาง jar ของ proxy"                     "$DEF_DIR" dir
 ask PROXY_JAR   "ชื่อ jar ของ proxy"                              "${DEF_JAR:-db-security-proxy-1.1.0-build-0104.jar}" text
@@ -52,7 +52,7 @@ if [ -n "$PPID_" ]; then
   elif [ "$pu" != "$SVC_USER" ]; then warn "proxy รันด้วย user $pu ไม่ใช่ $SVC_USER"; fi
   rc=${PCFG:-"(ไม่ได้ระบุ -Dproxy.config — ใช้ค่า default ของโปรแกรม)"}
   [ -z "$PCFG" ] || [ "$PCFG" = "$PROXY_CONF" ] && pass "config ที่ process ใช้ : $rc" || warn "process ใช้ config $PCFG ไม่ใช่ $PROXY_CONF"
-  n=$(java_pids "db-security-proxy" | while read -r p; do tr '\0' ' ' < "/proc/$p/cmdline" | grep -q "/dataguard/proxy/[^/]*/proxy.properties" || echo "$p"; done | grep -c .)
+  n=$(java_pids "$PROXY_PAT" | while read -r p; do tr '\0' ' ' < "/proc/$p/cmdline" | grep -q "/dataguard/proxy/[^/]*/proxy.properties" || echo "$p"; done | grep -c .)
   [ "$n" -le 1 ] || fail "proxy แบบแยกรัน $n ตัว" "" "port จะชนกัน — หยุดตัวเก่า"
 else fail "proxy ไม่รัน" "" "cd $PROXY_DIR แล้ว start ด้วย -Dproxy.config=$PROXY_CONF (เคยล้มเพราะ start จากโฟลเดอร์ที่ไม่มี jar)"; fi
 ev_cmd process_java.txt ps -o pid,ppid,user,lstart,etime,rss,args -C java

@@ -6,13 +6,17 @@
 #  หลักการ : อ่านอย่างเดียว ไม่หยุด/start/แก้ไฟล์ของระบบ ; ไม่พิมพ์ password / secret
 # =============================================================================
 
-LIB_VERSION="3.1.4"
+LIB_VERSION="3.2.0"
 set -o pipefail
 
 # ---------- สี / ตัวนับ ----------
 if [ -t 1 ]; then R=$'\e[31m'; G=$'\e[32m'; Y=$'\e[33m'; B=$'\e[36m'; N=$'\e[0m'; else R=; G=; Y=; B=; N=; fi
 NPASS=0; NWARN=0; NFAIL=0
-ASSUME_YES="${ASSUME_YES:-0}"      # 1 = ไม่ถาม ใช้ค่า default / ค่าจาก environment
+ASSUME_YES="${ASSUME_YES:-0}"
+NO_NET="${NO_NET:-0}"              # 1 = ไม่เปิด connection ใด ๆ ออกไป (ข้าม url_check / tcp_check)
+# รูปแบบชื่อ jar (รองรับชื่อที่ตั้งใหม่ เช่น dataguard-policy.jar / dataguard-proxy.jar บน SPW)
+ENFORCER_PAT="${ENFORCER_PAT:-dataguard-policy-enforcer|dataguard-policy[^/ ]*\.jar}"
+PROXY_PAT="${PROXY_PAT:-db-security-proxy|dataguard-proxy[^/ ]*\.jar}"      # 1 = ไม่ถาม ใช้ค่า default / ค่าจาก environment
 
 CUR_SECTION=""; RESULTS=""; EVID=""
 section() { CUR_SECTION="$1"; printf '\n%s== %s ==%s\n' "$B" "$1" "$N"; }
@@ -42,8 +46,9 @@ parse_common_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
       -y|--yes) ASSUME_YES=1; shift ;;
+      -n|--no-network) NO_NET=1; shift ;;
       -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-      *) echo "ไม่รู้จัก argument: $1 (ใช้ -y = ไม่ถาม, -h = ช่วยเหลือ)"; exit 2 ;;
+      *) echo "ไม่รู้จัก argument: $1 (ใช้ -y = ไม่ถาม, -n = ไม่ทดสอบเครือข่าย, -h = ช่วยเหลือ)"; exit 2 ;;
     esac
   done
 }
@@ -191,7 +196,7 @@ mask_text() {
   if have perl; then
     MASK_MODE="$MASK_MODE" SECRET_WORD_RE="$SECRET_WORD_RE" perl -pe '
       BEGIN { $re = $ENV{SECRET_WORD_RE}; $full = ($ENV{MASK_MODE} eq "full"); }
-      sub pm { my $v = shift; my $n = length $v; return $v if $n == 0 || $v =~ /\*\*\*/;
+      sub pm { my $v = shift; my $n = length $v; return $v if $n == 0 || $v =~ /\*\*\*/ || $v !~ /[A-Za-z0-9]/;   # ข้ามค่าที่ปิดแล้ว / ข้อความสถานะภาษาไทย เช่น (ว่าง)
                return "***($n)" if $full || $n < 8;
                return substr($v,0,2)."***".substr($v,-2)."($n)" if $n < 16;
                return substr($v,0,4)."***".substr($v,-4)."($n)"; }
@@ -275,6 +280,7 @@ extract_urls() {   # extract_urls FILE…  → รายการ URL (ซ่อ
 }
 url_check() {      # url_check URL "คำอธิบาย" [warn = ต่อไม่ได้เป็นแค่ WARN]
   local u="$1" d="${2:-$1}" lvl="${3:-fail}" out code t
+  [ "$NO_NET" = 1 ] && { skip "ไม่ทดสอบ (-n) : $d → $u"; ev_row urls_tested.tsv "$(date '+%F %T')" "$d" "$u" "-n" "-"; return; }
   have curl || { skip "ทดสอบ URL $u (ไม่มี curl)"; return; }
   out=$(curl -sk -o /dev/null -m 15 -w '%{http_code} %{time_total}' "$u" 2>/dev/null); code=${out%% *}; t=${out#* }
   ev_row urls_tested.tsv "$(date '+%F %T')" "$d" "$u" "$code" "${t}s"
@@ -286,7 +292,8 @@ url_check() {      # url_check URL "คำอธิบาย" [warn = ต่อ�
     *)       warn "$d ตอบ HTTP $code (${t}s)" "$u" "ดู log ของปลายทาง" ;;
   esac
 }
-tcp_check() {      # tcp_check HOST PORT "คำอธิบาย"
+tcp_check() {      # tcp_check HOST PORT "คำอธิบาย"  — เปิด TCP แล้วปิดทันที ไม่ส่งข้อมูล / ไม่ login
+  [ "$NO_NET" = 1 ] && { skip "ไม่ทดสอบ (-n) : ${3:-} → $1:$2"; ev_row tcp_tested.tsv "$(date '+%F %T')" "${3:-}" "$1" "$2" "-n"; return; }
   local r=fail; timeout 6 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null && r=ok
   ev_row tcp_tested.tsv "$(date '+%F %T')" "${3:-}" "$1" "$2" "$r"
   if [ "$r" = ok ]; then pass "${3:-$1:$2} ต่อได้ ($1:$2)"

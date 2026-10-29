@@ -30,9 +30,9 @@ Resource Policies → Verify Now 1 policy ของแต่ละ datastore
 ยืนยันกับ QA ว่าไม่มี enforcer บนเครื่องอื่นชี้ datastore เดียวกัน"
 
 echo "=== ตรวจ Policy enforcer — ระบุ path (Enter = ใช้ค่าที่แสดง) ==="
-RUNPID=$(java_pids "dataguard-policy-enforcer" | head -1)
+RUNPID=$(java_pids "$ENFORCER_PAT" | head -1)
 DEF_DIR=$(readlink "/proc/$RUNPID/cwd" 2>/dev/null || echo "$HOME/sw_install/agent-dataguard")
-DEF_JAR=$(tr '\0' '\n' < "/proc/$RUNPID/cmdline" 2>/dev/null | grep -m1 'dataguard-policy-enforcer.*\.jar' | xargs -r basename)
+DEF_JAR=$(tr '\0' '\n' < "/proc/$RUNPID/cmdline" 2>/dev/null | grep -m1 -E '(dataguard-policy-enforcer|dataguard-policy)[^/]*\.jar$' | xargs -r basename)
 ask AGENT_DIR "โฟลเดอร์ที่วาง jar ของ enforcer"          "$DEF_DIR" dir
 ask JAR_NAME  "ชื่อ jar ที่ต้องรัน (release นี้)"           "${DEF_JAR:-dataguard-policy-enforcer-1.6.0-0150-SNAPSHOT.jar}" text
 ask CBI_HOME  "cbi.home ของ agent"                          "$HOME/cbi" dir
@@ -47,13 +47,13 @@ print_answers
 
 # -----------------------------------------------------------------------------
 section "1. Process / Java / service"
-mapfile -t PIDS < <(java_pids "dataguard-policy-enforcer")
+mapfile -t PIDS < <(java_pids "$ENFORCER_PAT")
 EPID=""
 if [ "${#PIDS[@]}" -eq 0 ]; then fail "enforcer ไม่รัน" "" "tail $ENF_LOG แล้ว start (ควรเป็น systemd service)"
 else
   [ "${#PIDS[@]}" -eq 1 ] && pass "enforcer รันอยู่ตัวเดียว" || fail "enforcer รัน ${#PIDS[@]} ตัว (ต้องมีตัวเดียวต่อ datastore)" "${PIDS[*]}" "kill -INT ตัวเก่า"
   for p in "${PIDS[@]}"; do
-    j=$(tr '\0' '\n' < "/proc/$p/cmdline" | grep -m1 'dataguard-policy-enforcer.*\.jar'); c=$(readlink "/proc/$p/cwd")
+    j=$(tr '\0' '\n' < "/proc/$p/cmdline" | grep -m1 -E '(dataguard-policy-enforcer|dataguard-policy)[^/]*\.jar$'); c=$(readlink "/proc/$p/cwd")
     info "PID $p : user $(proc_user "$p") ; start $(proc_start "$p") ; cwd $c ; jar $j ; PPID $(ps -o ppid= -p "$p" | tr -d ' ')"
     info "         Java : $(proc_java_version "$p")"
     [ "$(basename "$j")" = "$JAR_NAME" ] && EPID="$p"
@@ -179,7 +179,7 @@ while read -r pid ppid; do
   ev_conf "$cfg" "gateway_${id}_proxy.properties"
   ev_row gateways.tsv "$id" "$pid" "$ppid" "${ports:-}" "$cfg"
   for k in proxy.mysql.port proxy.postgresql.port proxy.sqlserver.port db.host db.port; do v=$(prop_get "$cfg" "$k"); [ -n "$v" ] && info "         $k = $v"; done
-done < <(ps -eo pid=,ppid=,args= | grep "[d]b-security-proxy" | awk '{print $1,$2}')
+done < <(ps -eo pid=,ppid=,args= | grep -E "[d]b-security-proxy|[d]ataguard-proxy" | awk '{print $1,$2}')
 info "จำนวน Gateway ที่รันอยู่ : $GW"
 ev_cmd ports_listen.txt ss -ltnp
 

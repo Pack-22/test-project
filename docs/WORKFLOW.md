@@ -93,6 +93,12 @@ cat cubika_<host>_<เวลา>/summary.txt              # รายละเ�
 > Passthrough : proxy จะมี `[entra-jwt] Accepted` หลังมีคนดาวน์โหลดแบบ Passthrough เท่านั้น —
 > ทดสอบดาวน์โหลดที่ portal ก่อน แล้วรัน `check-proxy.sh` ซ้ำ
 
+### Passthrough ยังใช้ไม่ได้ — ไล่ทั้ง flow
+
+รัน `check-passthrough.sh` บนทุกเครื่องในเส้นทาง (เครื่อง proxy, เครื่อง CUBIKA, เครื่อง portal) ;
+ไม่แน่ใจเรื่องเครือข่ายขาออกให้รัน `-n` ก่อน (ไม่เปิด connection ใด ๆ) แล้วค่อยรันแบบปกติ
+แก้ข้อ FAIL แรกของชั้นล่างก่อน (proxy → CUBIKA → portal) แล้วรันซ้ำ
+
 แนบให้ QA : `summary.txt` + `results.csv` ของแต่ละสคริปต์
 
 เก็บผลทั้งรอบ :

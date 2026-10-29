@@ -3,6 +3,27 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.2.0] — 2026-10-30
+
+### Added
+- `check-passthrough.sh` — ไล่ทั้ง flow ของ Passthrough ตามบทบาทเครื่อง (เดาจาก process / โฟลเดอร์ที่พบ)
+  - agent : process / port (bind 0.0.0.0) / config ที่ process ใช้จริง, **key ซ้ำ** (บอกค่าที่มีผลจริง), `security.auth.mode`,
+    `db.user` / `db.password` ว่าง, tenant / client id, `usermapping.*` + URL ที่ proxy เรียกจริง, token ค่าตัวอย่าง (`change-me`),
+    **config ถูกแก้หลัง proxy start**, ต่อ DWS / Entra JWKS / User Mapping API, log (user-mapping, entra-jwt, SEVERE)
+  - platform : **Proxy host ชี้มาที่เครื่อง CUBIKA เอง**, IP ต้นทางสำหรับขอ firewall, ต่อ proxy ได้, log DataServiceDownload
+  - portal : `aad.proxy.scope` ↔ client id ของ proxy, `offline_access`, tenant, key DATA-MARKET-ACCESS (ช่องว่างท้ายค่า), ไฟล์ต้นทาง, AADSTS
+  - กรอง log ตาม UPN ของผู้ทดสอบ (`TEST_UPN`)
+- ตัวเลือก `-n` ทุกสคริปต์ : ไม่เปิด connection ออกไปไหนเลย
+- รองรับชื่อ jar ที่ตั้งใหม่ (`dataguard-policy.jar`, `dataguard-proxy.jar`) ใน check-enforcer / check-proxy ; ปรับได้ด้วย `ENFORCER_PAT` / `PROXY_PAT`
+
+### Fixed
+- ข้อความสถานะภาษาไทย (เช่น `(ว่าง)`) ไม่ถูกปิดเป็นค่าลับ
+
+### ผลทดสอบผลกระทบ (ระบบจำลอง SPW : proxy + Tomcat + portal, รัน root และ user ธรรมดา, แบบปกติและ `-n`)
+- checksum / mtime / สิทธิ์ทุกไฟล์ในระบบไม่เปลี่ยน, ไม่มีไฟล์ค้างใน `/tmp`, process เดิม (PID เดิม) ยังรัน
+- เครือข่าย : เฉพาะปลายทางที่ระบุ (DWS:8000, proxy:15432 แบบเปิด-ปิด, Entra JWKS, User Mapping API, CUBIKA) ; `-n` = ไม่มีเลย
+- ไม่มีค่าลับเต็มในไฟล์ผล ; สคริปต์ชุดเดิมผ่านการทดสอบซ้ำ (DB read-only ทุกครั้ง)
+
 ## [3.1.4] — 2026-10-29
 
 ปรับจากผลรันจริงบน cbi-dev (รอบ 11:46–12:00)

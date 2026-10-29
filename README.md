@@ -11,6 +11,7 @@
 | `check-portal.sh` | Data Service Portal (spwportal) : เวอร์ชัน, `aad.*`, `aad.proxy.scope`, key DATA-MARKET-ACCESS, log การดาวน์โหลด |
 | `check-enforcer.sh` | Policy enforcer (Data Guard agent) + Gateway : process ตัวเดียว, jar, `enforcer.properties`, datastore, pending-jobs, Gateway กำพร้า, advertisedHost |
 | `check-proxy.sh` | DB Security Proxy ที่รันแยก : config ที่ใช้จริง, Entra client id ↔ scope ของ portal, port, DB ปลายทาง, user-mapping, entra-jwt |
+| `check-passthrough.sh` | ไล่ทั้ง flow ของ Passthrough ตามบทบาทเครื่อง (agent / platform / portal) : key ซ้ำ, `security.auth.mode`, `db.user` ว่าง, Entra, usermapping, token ค่าตัวอย่าง, แก้ config หลัง start, proxy host ชี้ตัวเอง, IP ต้นทางสำหรับขอ firewall, `aad.proxy.scope` / `offline_access`, log AADSTS / DataServiceDownload / entra-jwt |
 
 หลักการ
 - **อ่านอย่างเดียว** — ไม่ stop / start / kill / แก้ไฟล์ของระบบ ; DB ใช้แค่ `SELECT` / `SHOW` ใน session แบบ READ ONLY ([ความปลอดภัย](#ความปลอดภัย))
@@ -49,6 +50,7 @@ cd /home/cbiaccess/check                # ผลการตรวจจะอ�
 /home/cbiaccess/cbi-check/check-portal.sh
 /home/cbiaccess/cbi-check/check-enforcer.sh
 /home/cbiaccess/cbi-check/check-proxy.sh
+/home/cbiaccess/cbi-check/check-passthrough.sh   # รันทุกเครื่องที่อยู่ในเส้นทาง Passthrough
 ```
 
 แต่ละสคริปต์ถาม path ก่อนเริ่ม — กด Enter = ใช้ค่าที่แสดง (enforcer / proxy เดาค่าเริ่มต้นจาก process ที่รันอยู่)
@@ -56,6 +58,7 @@ cd /home/cbiaccess/check                # ผลการตรวจจะอ�
 | ตัวเลือก | ความหมาย |
 |---|---|
 | `-y` | ไม่ถาม ใช้ค่า default หรือค่าจาก environment (เช่น `TOMCAT_HOME=/x ./check-cubika.sh -y`) |
+| `-n` | ไม่เปิด connection ออกไปไหนเลย (ข้ามการทดสอบ TCP / HTTP) — ตรวจเฉพาะไฟล์ / process / log |
 | `-h` | แสดงคำอธิบายของสคริปต์ |
 
 ลำดับที่แนะนำและขั้นตอนเต็ม : [docs/WORKFLOW.md](docs/WORKFLOW.md)
@@ -123,7 +126,7 @@ exit code : `0` = ไม่มี FAIL · `1` = มี FAIL · `2` = ใช้�
 |---|---|
 | ไฟล์ | อ่าน config / log / jar (`cat`, `grep`, `sed -n`, `unzip -p`, `sha256sum`, `stat`, `ls`) |
 | process | `ps`, `pgrep`, อ่าน `/proc/<pid>/cmdline,cwd,fd/1`, `systemctl status`, `ss -ltn` |
-| เครือข่าย | HTTP GET (`curl -m 15`) ไปยัง URL ใน config, เปิด TCP ทดสอบไปปลายทางที่ไม่ใช่ MySQL, `getent` |
+| เครือข่าย | HTTP GET ไม่มี credential (`curl -m 15`) ไปยัง URL ใน config, เปิด TCP แล้วปิดทันทีโดยไม่ login (ไม่ทำกับ MySQL), `getent` — ปิดทั้งหมดได้ด้วย `-n` |
 | DB | `SELECT` / `SHOW` เท่านั้น ใน session `transaction_read_only=1` + `max_execution_time` |
 
 สิ่งที่สคริปต์ **เขียน** — เฉพาะในโฟลเดอร์ผลการตรวจ (`mkdir`, ไฟล์ผล, `chmod go-rwx` ของโฟลเดอร์ผลเอง)
@@ -157,6 +160,8 @@ exit code : `0` = ไม่มี FAIL · `1` = มี FAIL · `2` = ใช้�
 | ทุกตัว | `REPORT_DIR` | โฟลเดอร์เก็บผล (ค่าเริ่มต้น = โฟลเดอร์ที่รัน) |
 | ทุกตัว | `MASK_MODE` | `partial` / `full` |
 | ทุกตัว | `LOG_MAX_LINES` | 300000 (บรรทัด log สูงสุดที่โหลด) |
+| ทุกตัว | `ENFORCER_PAT` / `PROXY_PAT` | รูปแบบชื่อ jar (รองรับ `dataguard-policy.jar` / `dataguard-proxy.jar`) |
+| check-passthrough | `LOG_TAIL` | 200000 (อ่านท้าย log กี่บรรทัด) |
 | check-db | `QUERY_TIMEOUT` | 60 วินาทีต่อ query |
 
 เปลี่ยนค่าแล้วบันทึกใน [CHANGELOG.md](CHANGELOG.md) ทุกครั้ง

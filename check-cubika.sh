@@ -55,7 +55,7 @@ print_answers
 
 # -----------------------------------------------------------------------------
 section "1. Process / Java / service"
-TPID=$(pgrep -f "java .*catalina.base=$TOMCAT_HOME" | head -1)
+TPID=$(java_pids "catalina.base=$TOMCAT_HOME" | head -1)
 if [ -n "$TPID" ]; then
   pass "Tomcat รันอยู่ PID $TPID (user $(proc_user "$TPID"), start $(proc_start "$TPID"))"
   [ "$(proc_user "$TPID")" = "$SVC_USER" ] || warn "Tomcat รันด้วย user $(proc_user "$TPID") ไม่ใช่ $SVC_USER" "" "ไฟล์ที่ Tomcat สร้างจะเป็นของ user อื่น — ตรวจ service / คำสั่ง start"
@@ -136,7 +136,15 @@ if [ -r "$H" ]; then
   else pass "hibernate ชี้ DB ของ environment"; fi
   [ "$ddl" = "update" ] || warn "hbm2ddl.auto ไม่ใช่ update" "${ddl:-(ไม่ได้ตั้ง)}" "คอลัมน์ใหม่ของ release จะไม่ถูกสร้างเอง"
   dbhp=$(echo "$url" | sed -nE 's#jdbc:[a-z]+://([^/:?]+)(:([0-9]+))?.*#\1 \3#p'); read -r dh dp <<<"$dbhp"
-  [ -n "$dh" ] && tcp_check "$dh" "${dp:-3306}" "DB ของ CUBIKA"
+  if [ -n "$dh" ]; then dp=${dp:-3306}
+    # ดู connection ที่ Tomcat เปิดอยู่แล้ว (ไม่เปิด connection ใหม่ — MySQL นับ connection ที่ไม่ login เป็น error และอาจ block host)
+    ips=$(case "$dh" in *[!0-9.]*) getent ahostsv4 "$dh" 2>/dev/null | awk '{print $1}' | sort -u;; *) echo "$dh";; esac; [ "$dh" = localhost ] && echo 127.0.0.1)
+    nc=0; for ip in $ips; do n=$(ss -Htn state established 2>/dev/null | awk '{print $4}' | sed 's/^\[::ffff://; s/\]//' | grep -cxF "$ip:$dp"); nc=$((nc+n)); done
+    ev_cmd db_connections.txt ss -tnp state established "( dport = :$dp )"
+    if [ "$nc" -gt 0 ]; then pass "มี connection ไป DB $dh:$dp อยู่ $nc เส้น (Tomcat ต่อ DB ได้)"
+    elif [ -n "$TPID" ]; then fail "Tomcat รันอยู่แต่ไม่มี connection ไป DB $dh:$dp" "" "ดู catalina.out (Access denied / Communications link failure) / firewall"
+    else skip "connection ไป DB (Tomcat ไม่รัน)"; fi
+  fi
 else fail "อ่าน $H ไม่ได้" "" "webapp ยังไม่ explode / สิทธิ์"; fi
 for f in "${CONFIG_FILES[@]}"; do ev_conf "$W/$f" "deployed_$(basename "$f")"; [ -n "$CONFIG_SRC" ] && ev_conf "$CONFIG_SRC/$f" "source_$(basename "$f")"; done
 for f in "${CONFIG_FILES[@]}"; do [ -r "$W/$f" ] && extract_urls "$W/$f" | sed "s#^#$(basename "$f")\t#"; done | ev_save urls_in_config.tsv

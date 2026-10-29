@@ -3,6 +3,26 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.1.1] — 2026-10-29
+
+ตรวจความปลอดภัย : ยืนยันว่าระหว่างรันไม่มีการแก้ไขไฟล์ / process / ข้อมูลใน DB
+
+### Security
+- `check-db.sh` เปิดทุก session แบบ **READ ONLY** (`transaction_read_only=1`) และจำกัดเวลา SELECT ละ 60 วินาที (`QUERY_TIMEOUT`)
+  ; ตรวจยืนยันกับ server ว่า read_only=1 แล้วรายงานในผล
+- `check-db.sh` รับชื่อ database / ตารางเฉพาะ `A-Z a-z 0-9 _ $ -` — กันคำสั่ง SQL แฝงมากับคำตอบ ; `DATA_LIMIT` ต้องเป็นตัวเลข
+- ห้ามเก็บผลการตรวจในโฟลเดอร์ของระบบ (`webapps/`, `work/`, `temp/`, `conf/`, `WEB-INF/`, `dataguard/`, `pending-jobs/`, `policycached/`, `cred/`, `/etc`)
+  — ป้องกัน Tomcat deploy โฟลเดอร์ผลเป็นแอป / agent อ่านไฟล์แปลกปลอม
+- ข้อความบนจอ / `report.log` / `results.csv` ผ่านการปิดค่าลับด้วย (เดิมปิดเฉพาะไฟล์ใน `evidence/`) เช่น `-Dpassword=` ใน command line
+- `check-cubika.sh` ตรวจการต่อ DB จาก connection ที่ Tomcat เปิดอยู่แล้ว (`ss`) แทนการเปิด TCP ใหม่
+  — MySQL นับ connection ที่ไม่ login เป็น error และอาจ block host (`max_connect_errors`)
+
+### Fixed
+- หา process เฉพาะที่เป็น `java` จริง (เดิม `pgrep -f` อาจจับ shell / `tail -f` / `grep` ที่มีข้อความเดียวกัน)
+- ข้อมูลตาราง (`SYS_CONFIG`) : แถวที่ key เป็นค่าลับ ปิดคอลัมน์ค่าถูกต้อง (เดิมถ้าค่ามีคำว่า pass อยู่ด้วยจะไม่ถูกปิด)
+- password ที่มี `"` `\` `#` ใช้กับไฟล์ credential ชั่วคราวได้
+- จำกัดจำนวนบรรทัด log ที่โหลดเข้าหน่วยความจำ (`LOG_MAX_LINES`, 300,000)
+
 ## [3.1.0] — 2026-10-29
 
 ### Changed

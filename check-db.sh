@@ -36,12 +36,23 @@ if [ -z "$DB_CNF" ]; then
   ask DB_HOST "DB host" "127.0.0.1" text; ask DB_PORT "DB port" "3306" text; ask DB_USER "DB user" "" text
   read -r -s -p "DB password (ไม่แสดง) : " DB_PASS </dev/tty; echo
   TMPCNF=$(mktemp); chmod 600 "$TMPCNF"; trap 'rm -f "$TMPCNF"' EXIT
-  printf '[client]\nhost=%s\nport=%s\nuser=%s\npassword=%s\n' "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASS" > "$TMPCNF"
+  esc=${DB_PASS//\\/\\\\}; esc=${esc//\"/\\\"}
+  printf '[client]\nhost=%s\nport=%s\nuser=%s\npassword="%s"\n' "$DB_HOST" "$DB_PORT" "$DB_USER" "$esc" > "$TMPCNF"; unset esc
   unset DB_PASS; DB_CNF="$TMPCNF"
 fi
 CUR_DB=""
-q()  { mysql --defaults-extra-file="$DB_CNF" ${CUR_DB:+-D "$CUR_DB"} -N -B -e "$1" 2>&1; }   # ไม่มีหัวคอลัมน์
-qh() { mysql --defaults-extra-file="$DB_CNF" ${CUR_DB:+-D "$CUR_DB"} -B -e "$1" 2>&1; }      # มีหัวคอลัมน์
+# ทุก session เปิดแบบ READ ONLY (server ปฏิเสธ INSERT/UPDATE/DELETE/DDL) + จำกัดเวลา SELECT ละไม่เกิน QUERY_TIMEOUT วินาที
+QUERY_TIMEOUT="${QUERY_TIMEOUT:-60}"
+RO_INIT=""; RO_MODE="ไม่ได้ตั้ง"
+_my() { mysql --defaults-extra-file="$DB_CNF" ${RO_INIT:+--init-command="$RO_INIT"} ${CUR_DB:+-D "$CUR_DB"} "$@" 2>&1; }
+for cand in "SET SESSION transaction_read_only=1, SESSION max_execution_time=$((QUERY_TIMEOUT*1000))" \
+            "SET SESSION tx_read_only=1, SESSION max_execution_time=$((QUERY_TIMEOUT*1000))" \
+            "SET SESSION transaction_read_only=1" "SET SESSION tx_read_only=1"; do
+  if mysql --defaults-extra-file="$DB_CNF" --init-command="$cand" -N -B -e "SELECT 1;" >/dev/null 2>&1; then RO_INIT="$cand"; RO_MODE="$cand"; break; fi
+done
+q()  { _my -N -B -e "$1"; }   # ไม่มีหัวคอลัมน์
+qh() { _my -B -e "$1"; }      # มีหัวคอลัมน์
+IDENT_RE='^[A-Za-z0-9_$-]{1,64}$'   # ชื่อ database / ตารางที่ยอมรับ (กันคำสั่ง SQL แฝงมากับคำตอบ)
 
 # ---------- เลือก database ----------
 CONN_ERR=""; DB_ALL=()
@@ -69,11 +80,13 @@ if [ -n "${DB_PICK:-}" ]; then
   else
     IFS=',' read -ra picks <<<"$DB_PICK"
     for p in "${picks[@]}"; do p=$(echo "$p" | tr -d ' '); [ -z "$p" ] && continue
-      if [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -ge 1 ] && [ "$p" -le "${#DB_ALL[@]}" ]; then DBS+=("${DB_ALL[$((p-1))]}"); else DBS+=("$p"); fi
+      if [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -ge 1 ] && [ "$p" -le "${#DB_ALL[@]}" ]; then p="${DB_ALL[$((p-1))]}"; fi
+      [[ "$p" =~ $IDENT_RE ]] && DBS+=("$p") || echo "  ข้ามชื่อ database ที่ไม่ถูกต้อง: $p"
     done
   fi
 fi
 IFS=',' read -ra DTABLES <<<"${DATA_TABLES:-}"
+[[ "$DATA_LIMIT" =~ ^[0-9]+$ ]] && [ "$DATA_LIMIT" -ge 1 ] || DATA_LIMIT=200
 
 start_report "db"
 print_answers
@@ -88,11 +101,13 @@ mask_tsv() {
       if (full || n<8) return "***(" n ")"
       if (n<16) return substr(v,1,2) "***" substr(v,n-1,2) "(" n ")"
       return substr(v,1,4) "***" substr(v,n-3,4) "(" n ")" }
-    NR==1 { for(i=1;i<=NF;i++) sec[i]=(tolower($i) ~ re); print; next }
-    { hit=0; for(i=1;i<=NF;i++) if (tolower($i) ~ re) { hit=1; keep[i]=1 } else keep[i]=0
+    NR==1 { for(i=1;i<=NF;i++) { h=tolower($i); sec[i]=(h ~ re)
+              kc[i]=(h ~ /(^|_)(id|key|name|code|param|parameter|prop|property|type|group|module|category)s?$/) }
+            print; next }
+    { hit=0; for(i=1;i<=NF;i++) if (kc[i] && tolower($i) ~ re) hit=1
       for(i=1;i<=NF;i++){
-        if (sec[i]) $i=m($i)
-        else if (hit && i>1 && !keep[i]) $i=m($i)
+        if (sec[i]) $i=m($i)                                  # คอลัมน์ที่ชื่อเป็นค่าลับ
+        else if (!kc[i] && (hit || tolower($i) ~ re)) $i=m($i)  # แถวที่ key เป็นค่าลับ → ปิดคอลัมน์ค่า
       }
       print }'
 }
@@ -106,6 +121,9 @@ section "1. การเชื่อมต่อ / ค่า server"
 if [ -n "$CONN_ERR" ]; then fail "ต่อ DB ไม่ได้" "$CONN_ERR" "ตรวจ host / user / password / firewall"; end_report; fi
 r=$(q "SELECT CURRENT_USER(), @@hostname, @@port, VERSION();"); read -r DBU DBH DBP DBV <<<"$(echo "$r" | tr '\t' ' ')"
 pass "ต่อ DB ได้ : user=$DBU server=$DBH:$DBP MySQL $DBV"
+ROV=$(q "SELECT @@session.transaction_read_only;" 2>/dev/null); echo "$ROV" | grep -q '^1$' || ROV=$(q "SELECT @@session.tx_read_only;" 2>/dev/null)
+[ -n "$RO_INIT" ] && echo "$ROV" | grep -q '^1$' && pass "session ตรวจเป็นแบบ READ ONLY — server ยืนยัน read_only=1 (แก้ข้อมูลไม่ได้)" "$RO_MODE" \
+  || warn "เปิด session แบบ READ ONLY ไม่ได้" "" "สคริปต์ใช้แค่ SELECT/SHOW อยู่แล้ว ; แนะนำใช้ DB user ที่มีแค่สิทธิ์ SELECT"
 info "database ที่ user มองเห็น (${#DB_ALL[@]}) : ${DB_ALL[*]}"
 [ "${#DBS[@]}" -eq 0 ] && { fail "ไม่ได้เลือก database ที่จะตรวจ"; end_report; }
 info "database ที่จะตรวจ : ${DBS[*]}"
@@ -200,6 +218,7 @@ else
   mkdir -p "$SNAP/data"
   for t in "${DTABLES[@]}"; do
     t=$(echo "$t" | tr -d ' '); [ -z "$t" ] && continue
+    [[ "$t" =~ $IDENT_RE ]] || { warn "ข้ามชื่อตารางที่ไม่ถูกต้อง: $t" "" "ใช้ได้เฉพาะ A-Z a-z 0-9 _ \$ -"; continue; }
     real=$(q "SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() AND LOWER(table_name)=LOWER('$t') LIMIT 1;")
     if [ -z "$real" ] || echo "$real" | grep -qi error; then warn "ไม่มีตาราง $t ใน $CUR_DB"; continue; fi
     cnt=$(q "SELECT COUNT(*) FROM \`$real\`;")

@@ -30,7 +30,7 @@ Resource Policies → Verify Now 1 policy ของแต่ละ datastore
 ยืนยันกับ QA ว่าไม่มี enforcer บนเครื่องอื่นชี้ datastore เดียวกัน"
 
 echo "=== ตรวจ Policy enforcer — ระบุ path (Enter = ใช้ค่าที่แสดง) ==="
-RUNPID=$(pgrep -f "java .*dataguard-policy-enforcer" | head -1)
+RUNPID=$(java_pids "dataguard-policy-enforcer" | head -1)
 DEF_DIR=$(readlink "/proc/$RUNPID/cwd" 2>/dev/null || echo "$HOME/sw_install/agent-dataguard")
 DEF_JAR=$(tr '\0' '\n' < "/proc/$RUNPID/cmdline" 2>/dev/null | grep -m1 'dataguard-policy-enforcer.*\.jar' | xargs -r basename)
 ask AGENT_DIR "โฟลเดอร์ที่วาง jar ของ enforcer"          "$DEF_DIR" dir
@@ -47,7 +47,7 @@ print_answers
 
 # -----------------------------------------------------------------------------
 section "1. Process / Java / service"
-mapfile -t PIDS < <(pgrep -f "java .*dataguard-policy-enforcer")
+mapfile -t PIDS < <(java_pids "dataguard-policy-enforcer")
 EPID=""
 if [ "${#PIDS[@]}" -eq 0 ]; then fail "enforcer ไม่รัน" "" "tail $ENF_LOG แล้ว start (ควรเป็น systemd service)"
 else

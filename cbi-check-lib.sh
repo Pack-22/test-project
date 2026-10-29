@@ -6,7 +6,7 @@
 #  หลักการ : อ่านอย่างเดียว ไม่หยุด/start/แก้ไฟล์ของระบบ ; ไม่พิมพ์ password / secret
 # =============================================================================
 
-LIB_VERSION="3.1"
+LIB_VERSION="3.1.1"
 set -o pipefail
 
 # ---------- สี / ตัวนับ ----------
@@ -16,6 +16,8 @@ ASSUME_YES="${ASSUME_YES:-0}"      # 1 = ไม่ถาม ใช้ค่า d
 
 CUR_SECTION=""; RESULTS=""; EVID=""
 section() { CUR_SECTION="$1"; printf '\n%s== %s ==%s\n' "$B" "$1" "$N"; }
+# _m : ปิดค่าลับในข้อความก่อนแสดง / บันทึก (เรียก perl เฉพาะเมื่อข้อความมีคำที่น่าสงสัย)
+_m() { local l="${1,,}"; if [[ "$l" =~ (pass|pwd|secret|token|credential|private|apikey|api_key|bearer|eyj|://[^/[:space:]]*@) ]]; then printf '%s' "$1" | mask_text; else printf '%s' "$1"; fi; }
 # _rec STATUS ข้อความ ได้ ดูต่อ → เพิ่มแถวใน results.csv (ทุกผลการตรวจถูกเก็บเป็นไฟล์)
 csvq() { local v="${1//\"/\"\"}"; printf '"%s"' "$v"; }
 _rec() {
@@ -23,10 +25,15 @@ _rec() {
   { csvq "$(date '+%F %T')"; printf ','; csvq "$CHECK_NAME"; printf ','; csvq "$CUR_SECTION"; printf ','
     csvq "$1"; printf ','; csvq "$2"; printf ','; csvq "${3:-}"; printf ','; csvq "${4:-}"; printf '\n'; } >> "$RESULTS"
 }
-pass()  { NPASS=$((NPASS+1)); printf '%s[PASS]%s %s\n' "$G" "$N" "$1"; [ -n "${2:-}" ] && printf '       ได้  : %s\n' "$2"; _rec PASS "$1" "${2:-}"; return 0; }
-warn()  { NWARN=$((NWARN+1)); printf '%s[WARN]%s %s\n' "$Y" "$N" "$1"; [ -n "${2:-}" ] && printf '       ได้  : %s\n' "$2"; [ -n "${3:-}" ] && printf '       ดูต่อ: %s\n' "$3"; _rec WARN "$1" "${2:-}" "${3:-}"; return 0; }
-fail()  { NFAIL=$((NFAIL+1)); printf '%s[FAIL]%s %s\n' "$R" "$N" "$1"; [ -n "${2:-}" ] && printf '       ได้  : %s\n' "$2"; [ -n "${3:-}" ] && printf '       ดูต่อ: %s\n' "$3"; _rec FAIL "$1" "${2:-}" "${3:-}"; return 0; }
-info()  { printf '[INFO] %s\n' "$1"; _rec INFO "$1"; }
+_out() {   # _out STATUS สี ข้อความ ได้ ดูต่อ
+  local m g; m=$(_m "$3"); g=$(_m "${4:-}")
+  printf '%s[%s]%s %s\n' "$2" "$1" "$N" "$m"; [ -n "$g" ] && printf '       ได้  : %s\n' "$g"; [ -n "${5:-}" ] && printf '       ดูต่อ: %s\n' "$5"
+  _rec "$1" "$m" "$g" "${5:-}"; return 0
+}
+pass()  { NPASS=$((NPASS+1)); _out PASS "$G" "$1" "${2:-}"; }
+warn()  { NWARN=$((NWARN+1)); _out WARN "$Y" "$1" "${2:-}" "${3:-}"; }
+fail()  { NFAIL=$((NFAIL+1)); _out FAIL "$R" "$1" "${2:-}" "${3:-}"; }
+info()  { local m; m=$(_m "$1"); printf '[INFO] %s\n' "$m"; _rec INFO "$m"; }
 skip()  { printf '[SKIP] %s\n' "$1"; _rec SKIP "$1"; }
 have()  { command -v "$1" >/dev/null 2>&1; }
 
@@ -91,6 +98,12 @@ start_report() {
   RUN_TS=$(date +%Y%m%d_%H%M%S)
   RUN_START_EPOCH=$(date +%s)
   REPORT_DIR="${REPORT_DIR:-$PWD}"
+  # กันการเขียนผลลงโฟลเดอร์ของระบบ (เช่น webapps/ — Tomcat จะ deploy โฟลเดอร์ใหม่เป็นแอป)
+  local rd; rd=$(cd "$REPORT_DIR" 2>/dev/null && pwd -P) || { echo "ไม่พบโฟลเดอร์เก็บผล $REPORT_DIR"; exit 2; }
+  case "$rd/" in
+    */webapps/*|*/work/Catalina/*|*/temp/*|*/conf/*|*/WEB-INF/*|*/dataguard/*|*/pending-jobs/*|*/policycached/*|*/dataconnector/*|*/cred/*|/etc/*|/proc/*|/sys/*|/)
+      echo "ห้ามเก็บผลการตรวจใน $rd (เป็นโฟลเดอร์ของระบบ / agent) — cd ไปโฟลเดอร์อื่น เช่น ~/check แล้วรันใหม่"; exit 2 ;;
+  esac
   umask 077
   OUT_DIR="$REPORT_DIR/${CHECK_NAME}_${RUN_HOST}_${RUN_TS}"
   mkdir -p "$OUT_DIR/evidence" || { echo "สร้างโฟลเดอร์ $OUT_DIR ไม่ได้ (สิทธิ์?) — รันจากโฟลเดอร์ที่เขียนได้ หรือตั้ง REPORT_DIR=/path"; exit 2; }
@@ -277,6 +290,15 @@ proc_java_version() {   # proc_java_version PID
   local exe; exe=$(readlink "/proc/$1/exe" 2>/dev/null) || return 1
   "$exe" -version 2>&1 | head -1
 }
+# java_pids PATTERN : PID ของ process java ที่ cmdline ตรง PATTERN (ไม่นับ shell / grep / tail ที่มีข้อความเดียวกัน)
+java_pids() {
+  local p a0
+  for p in $(pgrep -f -- "$1"); do
+    [ "$p" = "$$" ] && continue
+    a0=$(tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | head -1); a0=${a0%% *}
+    [ "${a0##*/}" = java ] && echo "$p"
+  done
+}
 proc_start() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//'; }
 proc_user()  { ps -o user= -p "$1" 2>/dev/null | tr -d ' '; }
 
@@ -286,5 +308,5 @@ log_since_last() {   # log_since_last FILE PATTERN [ย้อนกลับ N �
   l=$(grep -n -- "$pat" "$f" 2>/dev/null | tail -1 | cut -d: -f1)
   [ -z "$l" ] && l=1
   l=$(( l > back ? l - back : 1 ))
-  sed -n "${l},\$p" "$f"
+  sed -n "${l},\$p" "$f" | head -n "${LOG_MAX_LINES:-300000}"   # จำกัดขนาดในหน่วยความจำ
 }

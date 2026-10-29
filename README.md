@@ -13,7 +13,7 @@
 | `check-proxy.sh` | DB Security Proxy ที่รันแยก : config ที่ใช้จริง, Entra client id ↔ scope ของ portal, port, DB ปลายทาง, user-mapping, entra-jwt |
 
 หลักการ
-- **อ่านอย่างเดียว** — ไม่ stop / start / แก้ไฟล์ของระบบ ; DB ใช้แค่ `SELECT` / `SHOW`
+- **อ่านอย่างเดียว** — ไม่ stop / start / kill / แก้ไฟล์ของระบบ ; DB ใช้แค่ `SELECT` / `SHOW` ใน session แบบ READ ONLY ([ความปลอดภัย](#ความปลอดภัย))
 - **ทุกผลการตรวจเก็บเป็นไฟล์** ในโฟลเดอร์ที่สั่งรันสคริปต์ ([โครงสร้าง](docs/STRUCTURE.md))
 - **ค่าลับถูกปิดบางส่วน** ให้เทียบค่าจริงได้ แต่ไม่เห็นค่าเต็ม (ดู [การปิดค่าลับ](#การปิดค่าลับ))
 - ระบุวันเวลา / hostname / ผู้รัน ทุกครั้ง
@@ -115,6 +115,32 @@ exit code : `0` = ไม่มี FAIL · `1` = มี FAIL · `2` = ใช้�
 
 ส่งผลให้คนนอกทีม → ซ่อนทั้งหมด : `MASK_MODE=full ./check-portal.sh`
 
+## ความปลอดภัย
+
+สิ่งที่สคริปต์ **ทำ** กับระบบ — อ่านอย่างเดียวทั้งหมด
+
+| ประเภท | คำสั่ง |
+|---|---|
+| ไฟล์ | อ่าน config / log / jar (`cat`, `grep`, `sed -n`, `unzip -p`, `sha256sum`, `stat`, `ls`) |
+| process | `ps`, `pgrep`, อ่าน `/proc/<pid>/cmdline,cwd,fd/1`, `systemctl status`, `ss -ltn` |
+| เครือข่าย | HTTP GET (`curl -m 15`) ไปยัง URL ใน config, เปิด TCP ทดสอบไปปลายทางที่ไม่ใช่ MySQL, `getent` |
+| DB | `SELECT` / `SHOW` เท่านั้น ใน session `transaction_read_only=1` + `max_execution_time` |
+
+สิ่งที่สคริปต์ **เขียน** — เฉพาะในโฟลเดอร์ผลการตรวจ (`mkdir`, ไฟล์ผล, `chmod go-rwx` ของโฟลเดอร์ผลเอง)
+และไฟล์ credential ชั่วคราวของ check-db (สิทธิ์ 600, ลบเมื่อจบ)
+
+สิ่งที่ **ไม่มี** ในสคริปต์ : `rm` (นอกจากไฟล์ชั่วคราวของตัวเอง), `mv`, `cp`, `kill`, `systemctl start/stop/restart`, `sed -i`,
+`chown`, การ redirect เขียนไฟล์นอกโฟลเดอร์ผล, `INSERT/UPDATE/DELETE/ALTER/DROP/CREATE`
+
+ผลทดสอบ 3.1.1 (ระบบจำลอง Tomcat + enforcer + proxy + mysql) : รันครบ 5 สคริปต์ทั้งด้วย root และ user ธรรมดา
+→ checksum / mtime / สิทธิ์ของทุกไฟล์ในระบบเหมือนเดิม, process ยังรันครบ, ไม่มีไฟล์ค้างใน `/tmp`,
+ทุกการเรียก mysql เป็น read-only, ชื่อตาราง `bad;DROP TABLE x` ถูกปฏิเสธ, ไม่มีค่าลับเต็มในไฟล์ผล
+
+ข้อแนะนำ
+- รันด้วย user ที่รันบริการ (เช่น `cbiaccess`) — **ไม่ต้องใช้ root**
+- `check-db.sh` ใช้ DB user ที่มีแค่สิทธิ์ `SELECT` ได้ (ส่วนตรวจสิทธิ์จะ WARN ว่า user ที่ใช้ตรวจไม่มี ALTER — ปกติ)
+- การนับแถว / ดึงข้อมูลตารางใหญ่ใช้ทรัพยากร DB — รันนอกเวลาใช้งานหนัก ; แต่ละ query หยุดเองเมื่อเกิน `QUERY_TIMEOUT`
+
 ## ปรับค่าเมื่อเปลี่ยน release
 
 ค่าคาดหวังอยู่ต้นไฟล์ของแต่ละสคริปต์ แก้ในไฟล์ หรือส่งผ่าน environment
@@ -130,6 +156,8 @@ exit code : `0` = ไม่มี FAIL · `1` = มี FAIL · `2` = ใช้�
 | check-db | `KEY_TABLES` · `TOP_TABLES` | ตารางที่นับแถวจริง · 20 |
 | ทุกตัว | `REPORT_DIR` | โฟลเดอร์เก็บผล (ค่าเริ่มต้น = โฟลเดอร์ที่รัน) |
 | ทุกตัว | `MASK_MODE` | `partial` / `full` |
+| ทุกตัว | `LOG_MAX_LINES` | 300000 (บรรทัด log สูงสุดที่โหลด) |
+| check-db | `QUERY_TIMEOUT` | 60 วินาทีต่อ query |
 
 เปลี่ยนค่าแล้วบันทึกใน [CHANGELOG.md](CHANGELOG.md) ทุกครั้ง
 

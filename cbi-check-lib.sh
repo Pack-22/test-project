@@ -6,7 +6,7 @@
 #  หลักการ : อ่านอย่างเดียว ไม่หยุด/start/แก้ไฟล์ของระบบ ; ไม่พิมพ์ password / secret
 # =============================================================================
 
-LIB_VERSION="3.1.1"
+LIB_VERSION="3.1.2"
 set -o pipefail
 
 # ---------- สี / ตัวนับ ----------
@@ -71,6 +71,7 @@ ask() {
       file) [ -f "$ans" ] && break; echo "  ไม่พบไฟล์: $ans" ;;
       *) break ;;
     esac
+    [ "$opt" = "1" ] && [ "$ASSUME_YES" != "1" ] && echo "  (ข้อนี้เว้นว่างได้ — ลบข้อความด้วย Ctrl+U แล้วกด Enter)"
     if [ "$ASSUME_YES" = "1" ]; then
       if [ "$opt" = "1" ]; then echo "  (-y) ไม่พบ $ans — ข้าม $var"; ans=""; break; fi
       echo "  (-y) path ไม่ถูกต้อง: $var=$ans"; exit 2

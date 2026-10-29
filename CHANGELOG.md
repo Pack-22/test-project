@@ -3,6 +3,12 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.1.2] — 2026-10-29
+
+### Fixed
+- `check-db.sh` : ไม่มี `~/.cubika-db.cnf` → ค่าเริ่มต้นเป็นว่าง (Enter = กรอก host / user / password เอง) แทนการวนถามไฟล์ที่ไม่มี
+- คำถามที่เว้นว่างได้ เมื่อ path ไม่พบ แสดงวิธีข้าม (Ctrl+U แล้ว Enter)
+
 ## [3.1.1] — 2026-10-29
 
 ตรวจความปลอดภัย : ยืนยันว่าระหว่างรันไม่มีการแก้ไขไฟล์ / process / ข้อมูลใน DB

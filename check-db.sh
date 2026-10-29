@@ -30,7 +30,8 @@ SCREEN_WIDTH="${SCREEN_WIDTH:-60}"      # ความยาวสูงสุ�
 
 # ---------- credential ----------
 echo "=== ตรวจ Database ของ CUBIKA — ระบุค่า (Enter = ใช้ค่าที่แสดง) ==="
-ask DB_CNF "ไฟล์ credential mysql [client] (ว่าง = กรอก host/user เอง)" "$HOME/.cubika-db.cnf" "file?"
+DEF_CNF=""; [ -f "$HOME/.cubika-db.cnf" ] && DEF_CNF="$HOME/.cubika-db.cnf"
+ask DB_CNF "ไฟล์ credential mysql [client] (ว่าง = กรอก host/user/password เอง)" "$DEF_CNF" "file?"
 TMPCNF=""
 if [ -z "$DB_CNF" ]; then
   ask DB_HOST "DB host" "127.0.0.1" text; ask DB_PORT "DB port" "3306" text; ask DB_USER "DB user" "" text

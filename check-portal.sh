@@ -115,6 +115,8 @@ au=$(prop_get "$A" aad.authority); [ -n "$au" ] && url_check "$au/v2.0/.well-kno
 # -----------------------------------------------------------------------------
 section "5. log ของ portal (catalina.out ตั้งแต่ start ล่าสุด)"
 if [ -r "$CATALINA" ]; then
+  LSRC=$(log_rot_file "$CATALINA" "Starting service \[Catalina\]") || LSRC=""
+  [ -n "$LSRC" ] && [ "$LSRC" != "$CATALINA" ] && info "catalina.out ถูก rotate หลัง Tomcat start — อ่านต่อจาก $LSRC"
   LOGP=$(log_since_last "$CATALINA" "Starting service \[Catalina\]")
   info "Tomcat start ล่าสุด : $(echo "$LOGP" | head -1 | awk '{print $1" "$2}')"
   printf '%s\n' "$LOGP" | grep -E "$CTX|th\.ac\.ddlg|DataService|AAD|AADSTS|entitlement|proxy token|credential_rejected|session_expired" | ev_save catalina_portal_since_last_start.log

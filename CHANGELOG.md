@@ -3,6 +3,18 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.1.4] — 2026-10-29
+
+ปรับจากผลรันจริงบน cbi-dev (รอบ 11:46–12:00)
+
+### Fixed
+- catalina.out ถูก rotate ตอนเที่ยงคืน → เดิม FAIL "ไม่มี Server startup in" / "ไม่พบ schema check" ทั้งที่ Tomcat ปกติ ;
+  ตอนนี้ตามไปอ่านไฟล์ที่ rotate (`.1`, `-YYYYMMDD`, `.gz`, `catalina.YYYY-MM-DD.log`) ; หาไม่เจอเลย = WARN / SKIP แทน FAIL
+- ไฟล์ backup ใน webapps : แยก `.war` / โฟลเดอร์ (Tomcat deploy เป็นแอปจริง) ออกจาก `.zip` / `.bk` (แค่กินพื้นที่) ; แอปที่รู้จักตั้งใน `KNOWN_APPS`
+- enforcer : เกณฑ์ดิสก์ตรงกับ cubika (WARN ≥ 80%, FAIL ≥ 95%) และแสดงพื้นที่เหลือ
+- enforcer : ทดสอบ URL ใน `app.properties` พร้อมชื่อ key ; ต่อไม่ได้ = WARN (บาง key ไม่ได้ใช้บนเครื่องนี้ — ผลจริงดูที่ `[cred-store]`)
+- proxy : อ่าน user ของ process ไม่ได้ → แจ้งชัด (เดิมแสดง user ว่าง)
+
 ## [3.1.3] — 2026-10-29
 
 พบจากการรันจริงบน cbi-dev ครั้งแรก

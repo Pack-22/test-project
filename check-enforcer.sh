@@ -97,7 +97,10 @@ perm_check "$CBI_HOME/dataguard/pending-jobs" "$SVC_USER" no yes "pending-jobs/"
 ev_cmd ls_cbi_home.txt ls -laR --time-style=+%F_%T "$CBI_HOME/dataguard"
 ev_cmd disk.txt df -h "$CBI_HOME" "$AGENT_DIR"
 use=$(df -P "$CBI_HOME" | awk 'NR==2{gsub("%","",$5);print $5}')
-[ "$use" -lt 90 ] && pass "ดิสก์ของ cbi.home ใช้ ${use}%" || fail "ดิสก์ของ cbi.home ใช้ ${use}%" "" "ดิสก์เต็ม = ledger / journal บันทึกไม่ได้"
+av=$(df -Ph "$CBI_HOME" | awk 'NR==2{print $4}')
+if [ "$use" -ge 95 ]; then fail "ดิสก์ของ cbi.home ใช้ ${use}% (เหลือ $av)" "" "ดิสก์เต็ม = ledger / journal บันทึกไม่ได้"
+elif [ "$use" -ge 80 ]; then warn "ดิสก์ของ cbi.home ใช้ ${use}% (เหลือ $av)" "" "เคลียร์ backup / log เก่า ก่อนถึง 95%"
+else pass "ดิสก์ของ cbi.home ใช้ ${use}% (เหลือ $av)"; fi
 
 # -----------------------------------------------------------------------------
 section "4. config : enforcer.properties / app.properties"
@@ -111,7 +114,11 @@ DSL=$(prop_get "$AP" datacatalog.datastore); DSN=$(echo "$DSL" | tr ',' '\n' | g
 [ "$DSN" -gt 0 ] && pass "datacatalog.datastore = $DSN ตัว" "$DSL" || fail "ไม่มี datacatalog.datastore" "" "enforcer จะไม่ serve datastore ใด"
 echo "       URL ที่ agent ใช้ (app.properties / enforcer.properties — ซ่อน credential):"
 extract_urls "$AP" "$EP" | sed 's/^/         /'
-for u in $(extract_urls "$AP" | grep -E '^https?://' | head -3); do url_check "$u" "catalog URL ที่ agent เรียก"; done
+# ทดสอบ URL ทุก key ใน app.properties (บอกชื่อ key) — ต่อไม่ได้ = WARN เพราะบาง key ไม่ได้ใช้บนเครื่องนี้ ; ผลจริงดูที่ [cred-store] ข้อ 5
+while IFS= read -r line; do
+  k=$(echo "$line" | sed -E 's/^[[:space:]]*([^=: ]+).*/\1/'); u=$(echo "$line" | grep -oE 'https?://[^[:space:]"]+' | head -1)
+  [ -n "$u" ] && url_check "$u" "$k (app.properties)" warn
+done < <(grep -E '^[[:space:]]*[^#!].*https?://' "$AP" 2>/dev/null | head -5)
 
 # -----------------------------------------------------------------------------
 section "5. log ของ enforcer — รอบ start ล่าสุด"

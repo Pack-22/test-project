@@ -77,10 +77,16 @@ perm_check "$W"                   "$SVC_USER" no  yes "โฟลเดอร์ 
 for d in work temp logs; do perm_check "$TOMCAT_HOME/$d" "$SVC_USER" no yes "$d/"; done
 perm_check "$CATALINA"            ""          no  no  "catalina.out"
 for f in "${CONFIG_FILES[@]}"; do [ -e "$W/$f" ] && perm_check "$W/$f" "$SVC_USER" yes no "$f"; done
-# ไฟล์ที่ไม่ควรอยู่ใน webapps (Tomcat จะ deploy เป็นแอปเพิ่ม)
-odd=$(ls -1 "$TOMCAT_HOME/webapps" 2>/dev/null | grep -vE '^(ROOT|docs|examples|manager|host-manager)$' \
-      | grep -E '\.(bk|bak|old|orig|zip)|\.war\..+|_bk|backup' | tr '\n' ' ')
-[ -z "$odd" ] && pass "ไม่มีไฟล์ backup ค้างใน webapps/" || warn "พบไฟล์ backup ใน webapps/" "$odd" "ย้ายไป /app/cbi/backup — ไฟล์ .war หรือโฟลเดอร์จะถูก deploy เป็นแอปเพิ่ม"
+# ของที่ไม่ควรอยู่ใน webapps : .war / โฟลเดอร์ ที่ไม่ใช่แอปที่ใช้งาน → Tomcat deploy เป็นแอปเพิ่ม ; ไฟล์ backup อื่น → แค่กินพื้นที่
+KNOWN_APPS="${KNOWN_APPS:-ROOT docs examples manager host-manager cubika_9x0 spwportal}"
+extra=""; bak=""
+for e in "$TOMCAT_HOME"/webapps/*; do
+  [ -e "$e" ] || continue; n=$(basename "$e"); b=${n%.war}
+  case " $KNOWN_APPS $CTX " in *" $b "*) continue ;; esac
+  if [ -d "$e" ] || [[ "$n" == *.war ]]; then extra="$extra$n "; else bak="$bak$n "; fi
+done
+[ -z "$extra" ] && pass "ไม่มีแอปแปลกปลอมใน webapps/" || warn "มี .war / โฟลเดอร์อื่นใน webapps/ — Tomcat deploy เป็นแอป" "$extra" "ถ้าเป็น backup ให้ย้ายไป /app/cbi/backup ; ถ้าเป็นแอปที่ใช้จริง เพิ่มชื่อใน KNOWN_APPS"
+[ -z "$bak" ] || warn "ไฟล์ backup ค้างใน webapps/ (Tomcat ไม่ deploy แต่กินพื้นที่)" "$bak" "ย้ายไป /app/cbi/backup เมื่อสะดวก"
 info "webapps/ : $(ls -1 "$TOMCAT_HOME/webapps" 2>/dev/null | tr '\n' ' ')"
 ev_cmd ls_webapps.txt ls -la --time-style=+%F_%T "$TOMCAT_HOME/webapps"
 ev_cmd ls_tomcat.txt ls -la --time-style=+%F_%T "$TOMCAT_HOME" "$TOMCAT_HOME/work" "$TOMCAT_HOME/temp" "$TOMCAT_HOME/logs"
@@ -171,15 +177,20 @@ fi
 section "5. catalina.out — รอบ start ล่าสุด"
 if [ -r "$CATALINA" ]; then
   info "catalina.out : $(ls -lh --time-style='+%F %T' "$CATALINA" | awk '{print $5", แก้ล่าสุด "$6" "$7}')"
+  LSRC=$(log_rot_file "$CATALINA" "Starting service \[Catalina\]") || LSRC=""
+  [ -n "$LSRC" ] && [ "$LSRC" != "$CATALINA" ] && info "catalina.out ถูก rotate หลัง Tomcat start — อ่านต่อจาก $LSRC"
+  [ -z "$LSRC" ] && warn "ไม่พบบรรทัด Starting service [Catalina] ทั้งใน catalina.out และไฟล์ที่ rotate" "" "log อาจถูกลบ / Tomcat start นานแล้ว — ใช้ผล Tomcat process (ข้อ 1) แทน"
   LOGP=$(log_since_last "$CATALINA" "Starting service \[Catalina\]")
   printf '%s\n' "$LOGP" | tail -n 20000 | ev_save catalina_since_last_start.log
   printf '%s\n' "$LOGP" | grep -E "Exception|SEVERE|ERROR" | ev_save catalina_errors_since_last_start.log
   st=$(echo "$LOGP" | head -1 | awk '{print $1" "$2}')
   up=$(echo "$LOGP" | grep -m1 "Server startup in" | grep -oE '\[[0-9]+\] milliseconds')
-  [ -n "$up" ] && pass "start เมื่อ $st ; startup $up" || fail "ยังไม่มี \"Server startup in\" หลัง $st" "" "รอแล้วรันใหม่ ; เกิน 5 นาที ดู tail -200"
+  if [ -n "$up" ]; then pass "start เมื่อ $st ; startup $up"
+  elif [ -z "$LSRC" ]; then skip "Server startup in (ไม่มี log ของรอบ start)"
+  else fail "ยังไม่มี \"Server startup in\" หลัง $st" "" "รอแล้วรันใหม่ ; เกิน 5 นาที ดู tail -200"; fi
   sc=$(echo "$LOGP" | grep -m1 "\[DataguardPolicy\] schema check")
   case "$sc" in *"schema check OK"*) pass "Data Guard schema check OK";;
-               "") fail "ไม่พบ [DataguardPolicy] schema check" "" "แอปยัง start ไม่เสร็จ / ต่อ DB ไม่ได้";;
+               "") if [ -z "$LSRC" ]; then skip "schema check (ไม่มี log ของรอบ start)"; else fail "ไม่พบ [DataguardPolicy] schema check" "" "แอปยัง start ไม่เสร็จ / ต่อ DB ไม่ได้"; fi;;
                *) fail "schema check ไม่ผ่าน" "$sc" "DB ยังไม่ได้รัน SQL ของ DEV05 / ต่อ DB ผิดตัว";; esac
   PAT='SCHEMA CHECK FAILED|JasperException|Unable to compile class for JSP|ClassNotFoundException|NoClassDefFoundError|NoSuchMethodError|Unknown ordinal value|Access denied for user|Unknown database|Communications link failure'
   e=$(echo "$LOGP" | grep -cE "$PAT")

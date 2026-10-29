@@ -6,7 +6,7 @@
 #  หลักการ : อ่านอย่างเดียว ไม่หยุด/start/แก้ไฟล์ของระบบ ; ไม่พิมพ์ password / secret
 # =============================================================================
 
-LIB_VERSION="3.1.3"
+LIB_VERSION="3.1.4"
 set -o pipefail
 
 # ---------- สี / ตัวนับ ----------
@@ -273,15 +273,16 @@ perm_check() {
 extract_urls() {   # extract_urls FILE…  → รายการ URL (ซ่อน credential)
   grep -ahoE '(https?|jdbc:[a-z]+(:[a-z]+)?)://[^][:space:]"'"'"'<>,]+' "$@" 2>/dev/null | mask_url | sort -u
 }
-url_check() {      # url_check URL "คำอธิบาย"
-  local u="$1" d="${2:-$1}" out code t
+url_check() {      # url_check URL "คำอธิบาย" [warn = ต่อไม่ได้เป็นแค่ WARN]
+  local u="$1" d="${2:-$1}" lvl="${3:-fail}" out code t
   have curl || { skip "ทดสอบ URL $u (ไม่มี curl)"; return; }
   out=$(curl -sk -o /dev/null -m 15 -w '%{http_code} %{time_total}' "$u" 2>/dev/null); code=${out%% *}; t=${out#* }
   ev_row urls_tested.tsv "$(date '+%F %T')" "$d" "$u" "$code" "${t}s"
   case "$code" in
     2??|3??) pass "$d ตอบ HTTP $code (${t}s)" "$u" ;;
     401|403) pass "$d ตอบ HTTP $code (${t}s — ต่อได้ ต้อง login)" "$u" ;;
-    000)     fail "$d ต่อไม่ได้" "$u" "DNS / firewall / service ไม่รัน / certificate" ;;
+    000)     if [ "$lvl" = warn ]; then warn "$d ต่อไม่ได้" "$u" "DNS / firewall / service ไม่รัน / certificate — ถ้า key นี้ไม่ได้ใช้บนเครื่องนี้ ข้ามได้"
+             else fail "$d ต่อไม่ได้" "$u" "DNS / firewall / service ไม่รัน / certificate"; fi ;;
     *)       warn "$d ตอบ HTTP $code (${t}s)" "$u" "ดู log ของปลายทาง" ;;
   esac
 }
@@ -308,13 +309,32 @@ java_pids() {
   done
 }
 proc_start() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//'; }
-proc_user()  { ps -o user= -p "$1" 2>/dev/null | tr -d ' '; }
+proc_user()  { local u; u=$(ps -o user= -p "$1" 2>/dev/null | tr -d ' '); [ -n "$u" ] || u=$(stat -c %U "/proc/$1" 2>/dev/null); echo "$u"; }
 
 # ---------- log : ช่วงตั้งแต่บรรทัดที่ตรงรูปแบบครั้งสุดท้าย ----------
-log_since_last() {   # log_since_last FILE PATTERN [ย้อนกลับ N บรรทัด]
-  local f="$1" pat="$2" back="${3:-0}" l
-  l=$(grep -n -- "$pat" "$f" 2>/dev/null | tail -1 | cut -d: -f1)
+# log_rot_file FILE PATTERN : ไฟล์ที่มี PATTERN ครั้งล่าสุด — ไฟล์ปัจจุบัน หรือไฟล์ที่ถูก rotate (.1 / -YYYYMMDD / .gz / catalina.YYYY-MM-DD.log)
+log_rot_file() {
+  local f="$1" pat="$2" c
+  grep -q -- "$pat" "$f" 2>/dev/null && { echo "$f"; return 0; }
+  for c in $(ls -1t "$f".* "$f"-* "$(dirname "$f")/$(basename "$f" .out)".*.log* 2>/dev/null); do
+    [ "$c" = "$f" ] && continue
+    zgrep -q -- "$pat" "$c" 2>/dev/null && { echo "$c"; return 0; }
+  done
+  return 1
+}
+log_since_last() {   # log_since_last FILE PATTERN [ย้อนกลับ N บรรทัด] — ตามไปไฟล์ที่ถูก rotate ถ้าไฟล์ปัจจุบันไม่มี PATTERN
+  local f="$1" pat="$2" back="${3:-0}" l src x
+  src=$(log_rot_file "$f" "$pat") || src="$f"
+  l=$(zcat -f -- "$src" 2>/dev/null | grep -n -- "$pat" | tail -1 | cut -d: -f1)
   [ -z "$l" ] && l=1
   l=$(( l > back ? l - back : 1 ))
-  sed -n "${l},\$p" "$f" | head -n "${LOG_MAX_LINES:-300000}"   # จำกัดขนาดในหน่วยความจำ
+  {
+    zcat -f -- "$src" 2>/dev/null | sed -n "${l},\$p"
+    if [ "$src" != "$f" ]; then   # ไฟล์ที่ rotate หลังจากนั้น (เก่า → ใหม่) แล้วต่อด้วยไฟล์ปัจจุบัน
+      for x in $(ls -1tr "$f".* "$f"-* "$(dirname "$f")/$(basename "$f" .out)".*.log* 2>/dev/null); do
+        [ "$x" = "$src" ] || [ "$x" = "$f" ] && continue; [ "$x" -nt "$src" ] && zcat -f -- "$x" 2>/dev/null
+      done
+      cat -- "$f" 2>/dev/null
+    fi
+  } | head -n "${LOG_MAX_LINES:-300000}"   # จำกัดขนาดในหน่วยความจำ
 }

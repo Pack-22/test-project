@@ -47,7 +47,9 @@ if [ -n "$PPID_" ]; then
   pass "proxy รันอยู่ PID $PPID_ (user $(proc_user "$PPID_"), start $(proc_start "$PPID_"), PPID $(ps -o ppid= -p "$PPID_" | tr -d ' '))"
   info "cwd : $(readlink "/proc/$PPID_/cwd") ; คำสั่ง : $(tr '\0' ' ' < "/proc/$PPID_/cmdline" | cut -c1-220)"
   info "Java : $(proc_java_version "$PPID_")"
-  [ "$(proc_user "$PPID_")" = "$SVC_USER" ] || warn "proxy รันด้วย user $(proc_user "$PPID_") ไม่ใช่ $SVC_USER"
+  pu=$(proc_user "$PPID_")
+  if [ -z "$pu" ]; then warn "อ่าน user ของ PID $PPID_ ไม่ได้" "" "process อาจหยุดระหว่างตรวจ — ps -fp $PPID_"
+  elif [ "$pu" != "$SVC_USER" ]; then warn "proxy รันด้วย user $pu ไม่ใช่ $SVC_USER"; fi
   rc=${PCFG:-"(ไม่ได้ระบุ -Dproxy.config — ใช้ค่า default ของโปรแกรม)"}
   [ -z "$PCFG" ] || [ "$PCFG" = "$PROXY_CONF" ] && pass "config ที่ process ใช้ : $rc" || warn "process ใช้ config $PCFG ไม่ใช่ $PROXY_CONF"
   n=$(java_pids "db-security-proxy" | while read -r p; do tr '\0' ' ' < "/proc/$p/cmdline" | grep -q "/dataguard/proxy/[^/]*/proxy.properties" || echo "$p"; done | grep -c .)

@@ -3,6 +3,12 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.2.4] — 2026-10-30
+
+### Added
+- `url_check` บันทึก exit code และข้อความ error ของ curl ลง `evidence/urls_tested.tsv` และแสดงบนจอเมื่อต่อไม่ได้
+  (ใช้หาสาเหตุ JWKS ของ Entra ที่สคริปต์ได้ผลว่างบน cbi-dev ทั้งที่รัน curl เองได้ 200)
+
 ## [3.2.3] — 2026-10-30
 
 ผลรัน check-passthrough บน cbi-dev หลัง start proxy ใหม่ : PASS 32 / WARN 3 / FAIL 0 (Passthrough ของ dev ใช้งานได้จริง)

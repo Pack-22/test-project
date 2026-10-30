@@ -6,7 +6,7 @@
 #  หลักการ : อ่านอย่างเดียว ไม่หยุด/start/แก้ไฟล์ของระบบ ; ไม่พิมพ์ password / secret
 # =============================================================================
 
-LIB_VERSION="3.2.3"
+LIB_VERSION="3.2.4"
 set -o pipefail
 
 # ---------- สี / ตัวนับ ----------
@@ -282,9 +282,13 @@ url_check() {      # url_check URL "คำอธิบาย" [warn = ต่อ�
   local u="$1" d="${2:-$1}" lvl="${3:-fail}" out code t
   [ "$NO_NET" = 1 ] && { skip "ไม่ทดสอบ (-n) : $d → $u"; ev_row urls_tested.tsv "$(date '+%F %T')" "$d" "$u" "-n" "-"; return; }
   have curl || { skip "ทดสอบ URL $u (ไม่มี curl)"; return; }
-  out=$(curl -sk -o /dev/null --connect-timeout 8 -m 15 -w '%{http_code} %{time_total}' "$u" 2>/dev/null); code=${out%% *}; t=${out#* }
+  local ef="${EVID:-/tmp}/.curl_err.$$" rc err
+  out=$(curl -sSk -o /dev/null --connect-timeout 8 -m 15 -w '%{http_code} %{time_total}' "$u" 2>"$ef"); rc=$?
+  err=$(head -1 "$ef" 2>/dev/null | cut -c1-160); rm -f "$ef"
+  code=${out%% *}; t=${out#* }
   [ -n "$code" ] || { code=000; t="-"; }   # curl ไม่ตอบอะไรเลย = ถือว่าต่อไม่ได้
-  ev_row urls_tested.tsv "$(date '+%F %T')" "$d" "$u" "$code" "${t}s"
+  ev_row urls_tested.tsv "$(date '+%F %T')" "$d" "$u" "$code" "${t}s" "curl rc=$rc" "$err"
+  [ "$code" = 000 ] && [ -n "$err" ] && u="$u  ($err)"
   case "$code" in
     2??|3??) pass "$d ตอบ HTTP $code (${t}s)" "$u" ;;
     401|403) pass "$d ตอบ HTTP $code (${t}s — ต่อได้ ต้อง login)" "$u" ;;

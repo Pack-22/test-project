@@ -58,7 +58,7 @@ else
     info "         Java : $(proc_java_version "$p")"
     [ "$(basename "$j")" = "$JAR_NAME" ] && EPID="$p"
   done
-  [ -n "$EPID" ] && pass "รัน $JAR_NAME (PID $EPID)" || fail "ไม่มี process ที่รัน $JAR_NAME" "" "ยังไม่ได้เปลี่ยน jar / start ผิดไฟล์"
+  [ -n "$EPID" ] && pass "รัน $JAR_NAME (PID $EPID)" && proc_detach_check "$EPID" "enforcer" || fail "ไม่มี process ที่รัน $JAR_NAME" "" "ยังไม่ได้เปลี่ยน jar / start ผิดไฟล์"
   [ -n "$EPID" ] && [ "$(proc_user "$EPID")" != "$SVC_USER" ] && warn "enforcer รันด้วย user $(proc_user "$EPID") ไม่ใช่ $SVC_USER"
   [ -n "$EPID" ] && [ "$(readlink "/proc/$EPID/cwd")" != "$AGENT_DIR" ] && warn "enforcer รันจากโฟลเดอร์ $(readlink "/proc/$EPID/cwd") ไม่ใช่ $AGENT_DIR"
 fi

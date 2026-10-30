@@ -124,6 +124,7 @@ ev_conf "$P" proxy.properties
 section "A1. DB Proxy : process / port"
 if [ -n "$PXPID" ]; then
   pass "proxy รันอยู่ PID $PXPID (user $(proc_user "$PXPID"), start $(proc_start "$PXPID"))"
+  proc_detach_check "$PXPID" "proxy"
   { echo "# PID $PXPID cwd=$(readlink /proc/$PXPID/cwd) stdout=$(readlink /proc/$PXPID/fd/1)"; tr '\0' '\n' < "/proc/$PXPID/cmdline"; } 2>&1 | ev_save process_proxy.txt
   [ -z "$PXCFG" ] || [ "$PXCFG" = "$P" ] && pass "process ใช้ config ไฟล์นี้" "${PXCFG:-(ไม่ระบุ -Dproxy.config — ใช้ค่า default)}" \
     || warn "process ใช้ config $PXCFG ไม่ใช่ $P" "" "แก้ไฟล์ที่ process ใช้จริง หรือ restart ด้วย -Dproxy.config ที่ถูก"

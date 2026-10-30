@@ -3,6 +3,13 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.2.2] — 2026-10-30
+
+### Added
+- ตรวจว่า proxy / enforcer **ผูกกับ terminal** หรือไม่ (stdout เป็น `/dev/pts/*` และไม่ได้ start ด้วย `nohup`)
+  → FAIL เพราะปิดหน้าต่าง SSH แล้ว process จะหยุด (พบบน cbi-dev : proxy หยุดระหว่าง 01:08–07:46 ของ 30 ต.ค.)
+  ; แสดงด้วยว่า stdout ไปที่ไหน และเป็น systemd service หรือไม่ — ใช้ใน check-passthrough / check-proxy / check-enforcer
+
 ## [3.2.1] — 2026-10-30
 
 ปรับจากการรัน `check-passthrough.sh` บน cbi-dev ครั้งแรก

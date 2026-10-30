@@ -6,7 +6,7 @@
 #  หลักการ : อ่านอย่างเดียว ไม่หยุด/start/แก้ไฟล์ของระบบ ; ไม่พิมพ์ password / secret
 # =============================================================================
 
-LIB_VERSION="3.2.1"
+LIB_VERSION="3.2.2"
 set -o pipefail
 
 # ---------- สี / ตัวนับ ----------
@@ -316,6 +316,24 @@ java_pids() {
   done
 }
 proc_start() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//'; }
+# proc_detach_check PID ชื่อ : process ผูกกับ terminal ไหม (ปิด session แล้ว process จะหยุด) — อ่าน /proc อย่างเดียว
+proc_detach_check() {
+  local p="$1" n="$2" out ign sys=""
+  out=$(readlink "/proc/$p/fd/1" 2>/dev/null)
+  ign=$(awk '/^SigIgn:/{print $2}' "/proc/$p/status" 2>/dev/null)
+  have systemctl && sys=$(cat "/proc/$p/cgroup" 2>/dev/null | grep -oE '[^/]+\.service' | head -1)
+  info "$n : stdout → ${out:-?} ; cgroup ${sys:-ไม่ใช่ systemd service}"
+  case "$out" in
+    /dev/pts/*|/dev/tty*)
+      if [ -n "$ign" ] && [ $(( 16#$ign & 1 )) -eq 1 ]; then
+        warn "$n เขียน log ออก terminal ($out) — ไม่มีไฟล์ log ให้ย้อนดู" "" "start ใหม่ด้วย nohup … >> <ไฟล์ log> 2>&1 &"
+      else
+        fail "$n ผูกกับ terminal ($out) — ปิดหน้าต่าง / หลุด session แล้ว process จะหยุด" "" "start ใหม่ด้วย nohup … >> <ไฟล์ log> 2>&1 & (หรือทำ systemd service)"
+      fi ;;
+    "") warn "อ่าน stdout ของ $n ไม่ได้ (คนละ user?)" ;;
+    *) case "$sys" in ""|session-*|user@*) [ -n "$ign" ] && [ $(( 16#$ign & 1 )) -eq 0 ] && [ -z "$sys" ] && info "$n ไม่ได้ ignore SIGHUP (ไม่ได้ start ด้วย nohup) แต่ stdout ไม่ใช่ terminal";; esac ;;
+  esac
+}
 proc_user()  { local u; u=$(ps -o user= -p "$1" 2>/dev/null | tr -d ' '); [ -n "$u" ] || u=$(stat -c %U "/proc/$1" 2>/dev/null); echo "$u"; }
 
 # ---------- log : ช่วงตั้งแต่บรรทัดที่ตรงรูปแบบครั้งสุดท้าย ----------

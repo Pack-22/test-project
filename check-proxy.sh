@@ -45,6 +45,7 @@ print_answers
 section "1. Process / Java"
 if [ -n "$PPID_" ]; then
   pass "proxy รันอยู่ PID $PPID_ (user $(proc_user "$PPID_"), start $(proc_start "$PPID_"), PPID $(ps -o ppid= -p "$PPID_" | tr -d ' '))"
+  proc_detach_check "$PPID_" "proxy"
   info "cwd : $(readlink "/proc/$PPID_/cwd") ; คำสั่ง : $(tr '\0' ' ' < "/proc/$PPID_/cmdline" | cut -c1-220)"
   info "Java : $(proc_java_version "$PPID_")"
   pu=$(proc_user "$PPID_")

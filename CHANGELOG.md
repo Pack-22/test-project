@@ -3,6 +3,12 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.2.5] — 2026-10-30
+
+### Fixed
+- ค่าลับเพิ่มคำว่า `encrypt` — เดิม `usermapping.encrypt.key` ใน SYS_CONFIG ไม่ถูกปิด (พบบน cbi-dev)
+- ข้อมูลตาราง : แถวที่เป็นค่าลับไม่ปิดคอลัมน์วันที่ / สถานะ (`*_DATE_*`, `*_INUSE`, status, flag) อีกต่อไป — ดูได้ว่าแก้ล่าสุดเมื่อไร
+
 ## [3.2.4] — 2026-10-30
 
 ### Added

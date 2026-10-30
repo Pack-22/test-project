@@ -6,7 +6,7 @@
 #  หลักการ : อ่านอย่างเดียว ไม่หยุด/start/แก้ไฟล์ของระบบ ; ไม่พิมพ์ password / secret
 # =============================================================================
 
-LIB_VERSION="3.2.4"
+LIB_VERSION="3.2.5"
 set -o pipefail
 
 # ---------- สี / ตัวนับ ----------
@@ -178,7 +178,7 @@ end_report() {
 }
 
 # ---------- หลักฐาน (evidence) — ทุกไฟล์ผ่าน mask_text ก่อนบันทึก ----------
-SECRET_WORD_RE='pass|pwd|secret|token|credential|private|apikey|api_key'
+SECRET_WORD_RE='pass|pwd|secret|token|credential|private|apikey|api_key|encrypt'
 # การปิดค่าลับ : MASK_MODE=partial (ค่าเริ่มต้น) = ปิดบางส่วน ให้เทียบค่าจริงได้ ; MASK_MODE=full = ซ่อนทั้งหมด
 #   ยาว ≥16 ตัว : 4 ตัวแรก + *** + 4 ตัวท้าย (ความยาว)    เช่น fd64***a147(36)
 #   ยาว 8–15   : 2 ตัวแรก + *** + 2 ตัวท้าย (ความยาว)    เช่น Ab***9x(10)

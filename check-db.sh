@@ -25,7 +25,7 @@ have mysql || { echo "ไม่มีคำสั่ง mysql (apt-get install m
 
 TOP_TABLES="${TOP_TABLES:-20}"
 KEY_TABLES=( ${KEY_TABLES:-DGD_POLICY DGD_USER DGD_USR_ROLE DAS_DAQ_TECHNICAL DAS_DAQ_ISSUE DAS_DAQ_QUARANTINE} )
-SECRET_RE='pass|pwd|secret|token|apikey|api_key|private|credential'
+SECRET_RE='pass|pwd|secret|token|apikey|api_key|private|credential|encrypt'
 SCREEN_WIDTH="${SCREEN_WIDTH:-60}"      # ความยาวสูงสุดของแต่ละช่องตอนแสดงบนจอ (ไฟล์ snapshot เก็บเต็ม)
 
 # ---------- credential ----------
@@ -105,13 +105,15 @@ mask_tsv() {
       if (n<16) return substr(v,1,2) "***" substr(v,n-1,2) "(" n ")"
       return substr(v,1,4) "***" substr(v,n-3,4) "(" n ")" }
     function sx(v){ v=tolower(v); gsub(/passthrough/,"",v); return v ~ re }   # passthrough ไม่ใช่ค่าลับ
-    NR==1 { for(i=1;i<=NF;i++) { h=tolower($i); sec[i]=sx($i)
-              kc[i]=(h ~ /(^|_)(id|key|name|code|param|parameter|prop|property|type|group|module|category)s?$/) }
+    NR==1 { for(i=1;i<=NF;i++) { h=tolower($i)
+              kc[i]=(h ~ /(^|_)(id|key|name|code|param|parameter|prop|property|type|group|module|category)s?$/)
+              kd[i]=(h ~ /(date|time|created|updated|inuse|in_use|status|flag|active|enabled)/)   # ไม่ใช่ค่าลับ — ไม่ปิด
+              sec[i]=(sx($i) && !kc[i]) }
             print; next }
     { hit=0; for(i=1;i<=NF;i++) if (kc[i] && sx($i)) hit=1
       for(i=1;i<=NF;i++){
         if (sec[i]) $i=m($i)                                  # คอลัมน์ที่ชื่อเป็นค่าลับ
-        else if (i>1 && !kc[i] && (hit || sx($i))) $i=m($i)  # แถวที่ key เป็นค่าลับ → ปิดคอลัมน์ค่า
+        else if (i>1 && !kc[i] && !kd[i] && (hit || sx($i))) $i=m($i)  # แถวที่ key เป็นค่าลับ → ปิดคอลัมน์ค่า
       }
       print }'
 }

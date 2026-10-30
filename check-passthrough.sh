@@ -298,6 +298,8 @@ if [ -r "$AP" ]; then
 fi
 if [ -n "${CONFIG_SRC:-}" ]; then
   SA="$CONFIG_SRC/WEB-INF/classes/prop/authentication.properties"; SAP="$CONFIG_SRC/WEB-INF/classes/prop/app.properties"
+  [ -f "$SA" ] || SA="$CONFIG_SRC/authentication.properties"; [ -f "$SAP" ] || SAP="$CONFIG_SRC/app.properties"   # โฟลเดอร์แบบแบน (เช่น ~/sw_install)
+  info "ไฟล์ต้นทาง : $SA , $SAP"
   for kv in "$SA|aad.proxy.scope|$A" "$SA|aad.scopes|$A" "$SAP|app.datamarket.access.key.uuid|$AP" "$SAP|app.datamarket.access.key.secret|$AP"; do
     sf=${kv%%|*}; r=${kv#*|}; k=${r%%|*}; df=${r#*|}
     [ "$(prop_get "$sf" "$k")" = "$(prop_get "$df" "$k")" ] && pass "ไฟล์ต้นทาง $k ตรงกับที่ใช้จริง" || fail "ไฟล์ต้นทาง $k ไม่ตรงกับที่ใช้จริง" "" "แก้ไฟล์ต้นทางด้วย ไม่งั้น deploy รอบหน้าค่าจะเปลี่ยน"

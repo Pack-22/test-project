@@ -3,6 +3,11 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.2.7] — 2026-10-30
+
+### Fixed
+- check-passthrough : โฟลเดอร์ config ต้นทางแบบแบน (ไฟล์ `authentication.properties` / `app.properties` วางตรง ๆ เช่น `~/sw_install` ของ SPW ที่ deploy ด้วยมือ) ใช้ได้แล้ว
+
 ## [3.2.6] — 2026-10-30
 
 ปรับจากการรันบน SPW (portal ใช้ context `portal`)

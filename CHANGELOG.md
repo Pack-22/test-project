@@ -3,6 +3,20 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.2.3] — 2026-10-30
+
+ผลรัน check-passthrough บน cbi-dev หลัง start proxy ใหม่ : PASS 32 / WARN 3 / FAIL 0 (Passthrough ของ dev ใช้งานได้จริง)
+
+### Fixed
+- คำว่า `passthrough` ถูกมองเป็นค่าลับ (มีคำว่า pass) → ข้อความถูกปิดทั้งบรรทัด ; ตอนนี้ยกเว้น `passthrough` ทั้งในข้อความ / ไฟล์ / ข้อมูลตาราง
+- ปิดค่าลับแบบบางส่วนตัดภาษาไทยกลางตัวอักษร (ขึ้น `▒`) — ตอนนี้นับเป็นตัวอักษร UTF-8
+- `url_check` แสดง `HTTP  (s)` เมื่อ curl ไม่ตอบอะไร — ถือเป็นต่อไม่ได้ (000) และเพิ่ม `--connect-timeout 8`
+- check-db : คอลัมน์แรก (id) ไม่ถูกปิดค่าในแถวที่เป็นค่าลับ
+
+### ยืนยันจาก cbi-dev
+- `usermapping.api.url = <CUBIKA>/api/v1/usermapping` + `usermapping.endpoint.path = /api/v1/mappings.action`
+  → proxy เรียก `…/api/v1/usermapping/api/v1/mappings.action` และ sync สำเร็จ (ไม่มี token = 401)
+
 ## [3.2.2] — 2026-10-30
 
 ### Added

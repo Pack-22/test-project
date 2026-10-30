@@ -251,7 +251,7 @@ if [ -r "$CAT" ]; then
   D=$(logtail "$CAT" | grep -E '\[DataServiceDownload\]|testDbProxy|UNREACHABLE' | upn_filter)
   echo "$D" | ev_save platform_download.log
   info "DataServiceDownload${TEST_UPN:+ ($TEST_UPN)} : $(echo "$D" | grep -c 'DataServiceDownload') บรรทัด ; แยก route : $(echo "$D" | grep -oE 'route=[a-z]+' | sort | uniq -c | awk '{printf "%s×%s ",$2,$1}')"
-  info "passthrough ที่ดาวน์โหลดสำเร็จ (result=200) = $(echo "$D" | grep 'route=passthrough' | grep -c 'result=200') ครั้ง ; ล่าสุด : $(echo "$D" | grep 'route=passthrough' | tail -1 | awk '{print $1" "$2}')"
+  info "ดาวน์โหลดแบบ passthrough สำเร็จ (result=200) = $(echo "$D" | grep 'route=passthrough' | grep -c 'result=200') ครั้ง ; ล่าสุด : $(echo "$D" | grep 'route=passthrough' | tail -1 | awk '{print $1" "$2}')"
   for pat in "no proxy token" "credential_rejected" "session_expired" "UNREACHABLE|ConnectException|Connection refused" "entitlement check answered"; do
     c=$(echo "$D" | grep -cE "$pat")
     [ "$c" -eq 0 ] && pass "ไม่มี \"$pat\"" || warn "\"$pat\" $c ครั้ง" "$(echo "$D" | grep -E "$pat" | tail -1 | cut -c1-220)" \

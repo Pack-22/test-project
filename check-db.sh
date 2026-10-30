@@ -104,13 +104,14 @@ mask_tsv() {
       if (full || n<8) return "***(" n ")"
       if (n<16) return substr(v,1,2) "***" substr(v,n-1,2) "(" n ")"
       return substr(v,1,4) "***" substr(v,n-3,4) "(" n ")" }
-    NR==1 { for(i=1;i<=NF;i++) { h=tolower($i); sec[i]=(h ~ re)
+    function sx(v){ v=tolower(v); gsub(/passthrough/,"",v); return v ~ re }   # passthrough ไม่ใช่ค่าลับ
+    NR==1 { for(i=1;i<=NF;i++) { h=tolower($i); sec[i]=sx($i)
               kc[i]=(h ~ /(^|_)(id|key|name|code|param|parameter|prop|property|type|group|module|category)s?$/) }
             print; next }
-    { hit=0; for(i=1;i<=NF;i++) if (kc[i] && tolower($i) ~ re) hit=1
+    { hit=0; for(i=1;i<=NF;i++) if (kc[i] && sx($i)) hit=1
       for(i=1;i<=NF;i++){
         if (sec[i]) $i=m($i)                                  # คอลัมน์ที่ชื่อเป็นค่าลับ
-        else if (!kc[i] && (hit || tolower($i) ~ re)) $i=m($i)  # แถวที่ key เป็นค่าลับ → ปิดคอลัมน์ค่า
+        else if (i>1 && !kc[i] && (hit || sx($i))) $i=m($i)  # แถวที่ key เป็นค่าลับ → ปิดคอลัมน์ค่า
       }
       print }'
 }

@@ -6,7 +6,7 @@
 #  หลักการ : อ่านอย่างเดียว ไม่หยุด/start/แก้ไฟล์ของระบบ ; ไม่พิมพ์ password / secret
 # =============================================================================
 
-LIB_VERSION="3.2.2"
+LIB_VERSION="3.2.3"
 set -o pipefail
 
 # ---------- สี / ตัวนับ ----------
@@ -21,7 +21,7 @@ PROXY_PAT="${PROXY_PAT:-db-security-proxy|dataguard-proxy[^/ ]*\.jar}"      # 1 
 CUR_SECTION=""; RESULTS=""; EVID=""
 section() { CUR_SECTION="$1"; printf '\n%s== %s ==%s\n' "$B" "$1" "$N"; }
 # _m : ปิดค่าลับในข้อความก่อนแสดง / บันทึก (เรียก perl เฉพาะเมื่อข้อความมีคำที่น่าสงสัย)
-_m() { local l="${1,,}"; if [[ "$l" =~ (pass|pwd|secret|token|credential|private|apikey|api_key|bearer|eyj|://[^/[:space:]]*@) ]]; then printf '%s' "$1" | mask_text; else printf '%s' "$1"; fi; }
+_m() { local l="${1,,}"; l=${l//passthrough/}; if [[ "$l" =~ (pass|pwd|secret|token|credential|private|apikey|api_key|bearer|eyj|://[^/[:space:]]*@) ]]; then printf '%s' "$1" | mask_text; else printf '%s' "$1"; fi; }
 # _rec STATUS ข้อความ ได้ ดูต่อ → เพิ่มแถวใน results.csv (ทุกผลการตรวจถูกเก็บเป็นไฟล์)
 csvq() { local v="${1//\"/\"\"}"; printf '"%s"' "$v"; }
 _rec() {
@@ -194,8 +194,8 @@ pmask() {   # pmask ค่า → ค่าที่ปิดบางส่ว�
 # mask_text : ปิดค่าลับในข้อความ (key=value / key value ที่ชื่อ key มีคำลับ, user:pass@ ใน URL, password=… ใน log, JWT, Bearer)
 mask_text() {
   if have perl; then
-    MASK_MODE="$MASK_MODE" SECRET_WORD_RE="$SECRET_WORD_RE" perl -pe '
-      BEGIN { $re = $ENV{SECRET_WORD_RE}; $full = ($ENV{MASK_MODE} eq "full"); }
+    MASK_MODE="$MASK_MODE" SECRET_WORD_RE="$SECRET_WORD_RE" perl -CSDA -pe '
+      BEGIN { $re = $ENV{SECRET_WORD_RE}; $re =~ s/\bpass\b/pass(?!through)/; $full = ($ENV{MASK_MODE} eq "full"); }   # passthrough ไม่ใช่ค่าลับ ; -CSDA = นับตัวอักษรแบบ UTF-8 (ไม่ตัดภาษาไทยกลางตัว)
       sub pm { my $v = shift; my $n = length $v; return $v if $n == 0 || $v =~ /\*\*\*/ || $v !~ /[A-Za-z0-9]/;   # ข้ามค่าที่ปิดแล้ว / ข้อความสถานะภาษาไทย เช่น (ว่าง)
                return "***($n)" if $full || $n < 8;
                return substr($v,0,2)."***".substr($v,-2)."($n)" if $n < 16;
@@ -240,7 +240,7 @@ prop_get() {
   grep -E "^[[:space:]]*${ke}[[:space:]]*[=:[:space:]]" "$f" 2>/dev/null | tail -1 \
     | sed -E "s/^[[:space:]]*${ke}[[:space:]]*[=:]?[[:space:]]*//; s/[[:space:]]+$//"
 }
-is_secret_key() { echo "$1" | grep -qiE "$SECRET_WORD_RE"; }
+is_secret_key() { local k="${1,,}"; k=${k//passthrough/}; echo "$k" | grep -qiE "$SECRET_WORD_RE"; }
 # safe_val KEY VALUE : ค่าลับ → ปิดบางส่วน (+ sha256 8 ตัวแรก เมื่อยาว ≥16 ใช้เทียบว่าตรงกันทุกตัวอักษร)
 safe_val() {
   if is_secret_key "$1"; then
@@ -282,7 +282,8 @@ url_check() {      # url_check URL "คำอธิบาย" [warn = ต่อ�
   local u="$1" d="${2:-$1}" lvl="${3:-fail}" out code t
   [ "$NO_NET" = 1 ] && { skip "ไม่ทดสอบ (-n) : $d → $u"; ev_row urls_tested.tsv "$(date '+%F %T')" "$d" "$u" "-n" "-"; return; }
   have curl || { skip "ทดสอบ URL $u (ไม่มี curl)"; return; }
-  out=$(curl -sk -o /dev/null -m 15 -w '%{http_code} %{time_total}' "$u" 2>/dev/null); code=${out%% *}; t=${out#* }
+  out=$(curl -sk -o /dev/null --connect-timeout 8 -m 15 -w '%{http_code} %{time_total}' "$u" 2>/dev/null); code=${out%% *}; t=${out#* }
+  [ -n "$code" ] || { code=000; t="-"; }   # curl ไม่ตอบอะไรเลย = ถือว่าต่อไม่ได้
   ev_row urls_tested.tsv "$(date '+%F %T')" "$d" "$u" "$code" "${t}s"
   case "$code" in
     2??|3??) pass "$d ตอบ HTTP $code (${t}s)" "$u" ;;

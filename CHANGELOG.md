@@ -3,6 +3,12 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.2.8] — 2026-10-30
+
+### Added
+- portal : อ่าน log `[DataServiceDownload]` ของ portal (แยก route / ผล 200 / error) — บน SPW พบว่า log การดาวน์โหลดอยู่ใน Tomcat ของ portal ไม่ใช่ CUBIKA
+- portal : ถาม Proxy host แล้วทดสอบ portal → proxy (TCP เปิด-ปิด) เพราะ portal อาจเป็นฝ่ายต่อ proxy เอง
+
 ## [3.2.7] — 2026-10-30
 
 ### Fixed

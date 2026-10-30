@@ -106,6 +106,15 @@ if has_role portal; then
   ask CONFIG_SRC "โฟลเดอร์ config ต้นทางของสคริปต์ deploy portal (ว่าง = ข้าม)" "" "dir?"
   DEF_CID=""; [ -r "${PROXY_CONF:-$HOME/cbi/dataguard/proxy.properties}" ] && DEF_CID=$(prop_get "${PROXY_CONF:-$HOME/cbi/dataguard/proxy.properties}" azure.entra.client.id)
   ask PROXY_CID "client id ของแอป proxy ใน Entra (ว่าง = ไม่เทียบ)" "$DEF_CID" "text?"
+  if ! has_role platform; then   # portal อาจเป็นฝ่ายต่อ proxy เอง (DataServiceDownloadAPI รันใน portal)
+    while :; do
+      ask PROXY_HOST "Proxy host (IP เครื่อง proxy — ใช้ทดสอบว่า portal ต่อถึงไหม ; ว่าง = ข้าม)" "${PROXY_HOST:-}" "text?"
+      [ -z "$PROXY_HOST" ] || [[ "$PROXY_HOST" =~ ^[A-Za-z0-9._-]+$ ]] && break
+      echo "  ค่าที่ใส่ไม่ใช่ชื่อเครื่อง / IP"; PROXY_HOST=""; ANSWERS=("${ANSWERS[@]:0:${#ANSWERS[@]}-1}")
+      [ "$ASSUME_YES" = 1 ] && { PROXY_HOST=""; break; }
+    done
+    [ -n "$PROXY_HOST" ] && ask PROXY_PORT "Proxy port" "${PROXY_PORT:-15432}" text
+  fi
 fi
 ask TEST_UPN "UPN ของผู้ทดสอบ (ใช้กรอง log เท่านั้น ; ว่าง = ทุกคน)" "" "text?"
 
@@ -314,7 +323,19 @@ if [ -r "$CAT" ]; then
   [ -z "$codes" ] && pass "ไม่มี AADSTS error" || warn "AADSTS : $codes" "$(echo "$E" | grep AADSTS | tail -1 | cut -c1-220)" \
     "65001 = ยังไม่ได้ admin consent ; 500011 = ไม่มี Application ID URI ; 70011 = scope ผิด"
   c=$(echo "$E" | grep -c 'no proxy token'); [ "$c" -eq 0 ] && pass "ไม่มี \"no proxy token\"" || warn "\"no proxy token\" $c ครั้ง" "" "consent / aad.proxy.scope / ผู้ใช้ต้อง login ใหม่"
+  D=$(logtail "$CAT" | grep '\[DataServiceDownload\]' | upn_filter)
+  echo "$D" | ev_save portal_download.log
+  info "DataServiceDownload ใน portal : $(echo "$D" | grep -c .) บรรทัด ; แยก route : $(echo "$D" | grep -oE 'route=[a-z-]+' | sort | uniq -c | awk '{printf "%s×%s ",$2,$1}')"
+  info "ดาวน์โหลดสำเร็จ (result=200) : legacy $(echo "$D" | grep 'route=legacy' | grep -c 'result=200') ครั้ง ; passthrough $(echo "$D" | grep 'route=passthrough' | grep -c 'result=200') ครั้ง"
+  for pat in "credential_rejected" "UNREACHABLE|ConnectException|Connection refused" "entitlement check answered"; do
+    c=$(echo "$D" | grep -cE "$pat"); [ "$c" -eq 0 ] || warn "\"$pat\" $c ครั้ง (portal)" "$(echo "$D" | grep -E "$pat" | tail -1 | cut -c1-220)"
+  done
 else skip "อ่าน $CAT ไม่ได้"; fi
+if ! has_role platform && [ -n "${PROXY_HOST:-}" ]; then
+  section "F. Portal → DB Proxy"
+  for ip in $(resolve4 "$PROXY_HOST"); do src=$(ip route get "$ip" 2>/dev/null | grep -oE 'src [0-9.]+' | cut -d' ' -f2); [ -n "$src" ] && info "IP ต้นทางที่ใช้ไปหา $ip = $src (ใช้เป็น Source ตอนขอ firewall)"; done
+  tcp_check "$PROXY_HOST" "${PROXY_PORT:-15432}" "portal → DB Proxy (กรณี portal เป็นฝ่ายต่อ proxy)"
+fi
 fi
 
 end_report

@@ -3,6 +3,17 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.2.6] — 2026-10-30
+
+ปรับจากการรันบน SPW (portal ใช้ context `portal`)
+
+### Fixed
+- หา portal จาก webapp ที่มี `prop/authentication.properties` + `aad.clientId` (เดิมหาแค่ชื่อ `spwportal`)
+
+### Added
+- portal : แสดงเวอร์ชัน (version.properties) และตรวจว่า build มี `acquireProxyToken` (รองรับ Passthrough)
+- portal : แจ้งเมื่อ portal ใช้แอป Entra ตัวเดียวกับ proxy
+
 ## [3.2.5] — 2026-10-30
 
 ### Fixed

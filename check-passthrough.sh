@@ -56,7 +56,9 @@ TC_DEF=$(tr '\0' ' ' < "/proc/$TCPID/cmdline" 2>/dev/null | grep -oE -- '-Dcatal
 DET=""
 { [ -n "$PXPID" ] || [ -f "$HOME/cbi/dataguard/proxy.properties" ]; } && DET="agent"
 ls -d "$TC_DEF"/webapps/cubika*/WEB-INF >/dev/null 2>&1 && DET="${DET:+$DET,}platform"
-[ -d "$TC_DEF/webapps/spwportal/WEB-INF" ] && DET="${DET:+$DET,}portal"
+# portal = webapp ที่มี prop/authentication.properties ซึ่งมี aad.clientId (ชื่อ context ต่างกันได้ เช่น spwportal / portal)
+PCTX_DEF=$(for f in "$TC_DEF"/webapps/*/WEB-INF/classes/prop/authentication.properties; do grep -qE '^[[:space:]]*aad\.clientId' "$f" 2>/dev/null && echo "$f"; done | head -1 | sed -E 's#.*/webapps/([^/]+)/.*#\1#')
+[ -n "$PCTX_DEF" ] && DET="${DET:+$DET,}portal"
 
 echo "=== ตรวจ Passthrough — ระบุค่า ==="
 echo "บทบาทที่พบบนเครื่องนี้ : ${DET:-(ไม่พบ — ระบุเอง)}"
@@ -100,7 +102,7 @@ if has_role platform; then
   done
 fi
 if has_role portal; then
-  ask PCTX "ชื่อ context ของ portal" "spwportal" text
+  ask PCTX "ชื่อ context ของ portal" "${PCTX_DEF:-spwportal}" text
   ask CONFIG_SRC "โฟลเดอร์ config ต้นทางของสคริปต์ deploy portal (ว่าง = ข้าม)" "" "dir?"
   DEF_CID=""; [ -r "${PROXY_CONF:-$HOME/cbi/dataguard/proxy.properties}" ] && DEF_CID=$(prop_get "${PROXY_CONF:-$HOME/cbi/dataguard/proxy.properties}" azure.entra.client.id)
   ask PROXY_CID "client id ของแอป proxy ใน Entra (ว่าง = ไม่เทียบ)" "$DEF_CID" "text?"
@@ -268,7 +270,14 @@ PP="$TOMCAT_HOME/webapps/$PCTX/WEB-INF/classes/prop"; A="$PP/authentication.prop
 ev_conf "$A" portal_authentication.properties; ev_conf "$AP" portal_app.properties
 if [ -r "$A" ]; then
   SC=$(prop_get "$A" aad.proxy.scope); AS=$(prop_get "$A" aad.scopes); AU=$(prop_get "$A" aad.authority)
-  info "aad.clientId = $(prop_get "$A" aad.clientId) ; aad.authority = $AU"
+  PCLI=$(prop_get "$A" aad.clientId)
+  info "aad.clientId = $PCLI ; aad.authority = $AU"
+  VP="$PP/version.properties"
+  [ -r "$VP" ] && info "เวอร์ชัน portal : patch=$(prop_get "$VP" app.version.patch) status=$(prop_get "$VP" app.version.status) (Passthrough ต้องเป็น build ที่มี aad.proxy.scope เช่น SPW-DEV12 ขึ้นไป)"
+  grep -q 'acquireProxyToken' "$TOMCAT_HOME/webapps/$PCTX/WEB-INF/classes/th/ac/ddlg/aad/AADAuthHelper.class" 2>/dev/null \
+    && pass "build ของ portal รองรับ Passthrough (มี acquireProxyToken)" \
+    || warn "ไม่พบ acquireProxyToken ใน build ของ portal" "" "build เก่ากว่า SPW-DEV12 อาจยังไม่รองรับ Passthrough — ตรวจเวอร์ชัน"
+  [ -n "${PROXY_CID:-}" ] && [ "$PCLI" = "$PROXY_CID" ] && info "portal ใช้แอป Entra ตัวเดียวกับ proxy ($PCLI) — ต่างจาก dev ที่แยก 2 แอป ; แอปนี้ต้อง Expose an API (api://$PCLI) เอง"
   if [[ "$SC" =~ ^api://[0-9a-fA-F-]{36}/\.default$ ]]; then
     pass "aad.proxy.scope = $SC"
     sid=${SC#api://}; sid=${sid%%/*}

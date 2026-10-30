@@ -65,9 +65,19 @@ has_role() { case ",$ROLES," in *",$1,"*) return 0;; esac; return 1; }
 
 if has_role agent; then
   ask PROXY_CONF "ไฟล์ proxy.properties ที่ proxy ใช้" "${PXCFG:-$HOME/cbi/dataguard/proxy.properties}" file
-  DEF_LOG=$(readlink "/proc/$PXPID/fd/1" 2>/dev/null); case "$DEF_LOG" in /*) [ -f "$DEF_LOG" ] || DEF_LOG="";; *) DEF_LOG="";; esac
-  [ -z "$DEF_LOG" ] && DEF_LOG=$(ls -1t "$(readlink "/proc/$PXPID/cwd" 2>/dev/null)"/*proxy*.log 2>/dev/null | grep -v audit | head -1)
-  ask PROXY_LOG "ไฟล์ log ของ proxy (ว่าง = ข้าม)" "$DEF_LOG" "file?"
+  # log ของโปรแกรม (ไม่ใช่ audit log) : stdout ของ process → โฟลเดอร์ที่ process รัน → โฟลเดอร์ agent ที่พบบ่อย
+  PXCWD=""; DEF_LOG=""
+  if [ -n "$PXPID" ]; then
+    PXCWD=$(readlink "/proc/$PXPID/cwd" 2>/dev/null)
+    DEF_LOG=$(readlink "/proc/$PXPID/fd/1" 2>/dev/null); case "$DEF_LOG" in /*) [ -f "$DEF_LOG" ] || DEF_LOG="";; *) DEF_LOG="";; esac
+  fi
+  [ -z "$DEF_LOG" ] && DEF_LOG=$(ls -1t ${PXCWD:+"$PXCWD"/*proxy*.log} "$HOME"/sw_install/agent-dataguard/*proxy*.log "$HOME"/*proxy*.log 2>/dev/null | grep -v -- '-audit' | head -1)
+  ask PROXY_LOG "ไฟล์ log ของ proxy — log ของโปรแกรม ไม่ใช่ proxy-audit.log (ว่าง = ข้าม)" "$DEF_LOG" "file?"
+  # audit log (บันทึก login ที่ถูกปฏิเสธ) : ตาม audit.log.path ใน config (ถ้าเป็น path สัมพัทธ์ = เทียบกับโฟลเดอร์ที่ proxy รัน)
+  AUD=$(prop_get "$PROXY_CONF" audit.log.path 2>/dev/null)
+  case "$AUD" in ""|/*) ;; *) AUD="${PXCWD:-$(dirname "$PROXY_LOG" 2>/dev/null)}/$AUD";; esac
+  [ -f "$AUD" ] || AUD=$(ls -1t ${PXCWD:+"$PXCWD"/*audit*.log} "$HOME"/sw_install/agent-dataguard/*audit*.log 2>/dev/null | head -1)
+  [ "$PROXY_LOG" = "$AUD" ] && echo "  (ไฟล์นี้เป็น audit log — สคริปต์จะสรุปให้ในหัวข้อ audit แยก)"
 fi
 if has_role platform || has_role portal; then
   ask TOMCAT_HOME "Tomcat home" "$TC_DEF" dir
@@ -75,8 +85,19 @@ fi
 if has_role platform; then
   DEF_CTX=$(ls -1d "$TOMCAT_HOME"/webapps/cubika*/ 2>/dev/null | head -1 | xargs -r basename)
   ask CTX "ชื่อ context ของ CUBIKA" "${DEF_CTX:-cubika}" text
-  ask PROXY_HOST "Proxy host ที่ตั้งใน CUBIKA (Settings → DB Proxy)" "" text
-  ask PROXY_PORT "Proxy port" "15432" text
+  echo "  (ดู Proxy host / port ได้ที่หน้า Data Guard → Settings → DB Proxy ของ CUBIKA)"
+  while :; do
+    ask PROXY_HOST "Proxy host ที่ตั้งใน CUBIKA — ชื่อเครื่องหรือ IP" "${PROXY_HOST:-}" text
+    [[ "$PROXY_HOST" =~ ^[A-Za-z0-9._-]+$ ]] && break
+    echo "  ค่าที่ใส่ไม่ใช่ชื่อเครื่อง / IP (เช่น 10.10.1.26 หรือ dev.cbi-platform.com)"; PROXY_HOST=""; ANSWERS=("${ANSWERS[@]:0:${#ANSWERS[@]}-1}")
+    [ "$ASSUME_YES" = 1 ] && { echo "  (-y) PROXY_HOST ไม่ถูกต้อง"; exit 2; }
+  done
+  while :; do
+    ask PROXY_PORT "Proxy port ที่ตั้งใน CUBIKA" "${PROXY_PORT:-15432}" text
+    [[ "$PROXY_PORT" =~ ^[0-9]{1,5}$ ]] && break
+    echo "  port ต้องเป็นตัวเลข"; PROXY_PORT=""; ANSWERS=("${ANSWERS[@]:0:${#ANSWERS[@]}-1}")
+    [ "$ASSUME_YES" = 1 ] && { echo "  (-y) PROXY_PORT ไม่ถูกต้อง"; exit 2; }
+  done
 fi
 if has_role portal; then
   ask PCTX "ชื่อ context ของ portal" "spwportal" text
@@ -166,7 +187,8 @@ SSLE=$(prop_get "$P" ssl.enabled); info "ssl.enabled = ${SSLE:-false} → สว
 AT=$(prop_get "$P" admin.token); TK=$(prop_get "$P" security.tokens)
 [ "$(prop_get "$P" admin.enabled)" = true ] && case "$AT" in *change-me*|"") warn "admin.enabled=true แต่ admin.token เป็นค่าตัวอย่าง / ว่าง" "" "openssl rand -hex 32 ; จำกัด firewall port $(prop_get "$P" admin.port)";; esac
 case "$TK" in *change-me*) if [ "$MODE" = token ] || [ "$MODE" = mixed ]; then warn "ค่าใน security.tokens ยังเป็นค่าตัวอย่างของโปรแกรม" "" "เปลี่ยนเป็นค่าสุ่ม หรือลบถ้าไม่ใช้";fi;; esac
-perm_check "$P" "$(proc_user "${PXPID:-0}")" yes no "proxy.properties"
+POWN=$(proc_user "${PXPID:-0}"); [ -n "$POWN" ] || POWN=$(stat -c %U "$P" 2>/dev/null)
+perm_check "$P" "$POWN" yes no "proxy.properties"
 
 section "A3. DB Proxy : ต่อปลายทางได้ (ไม่ login)"
 DH=$(prop_get "$P" db.host); DP=$(prop_get "$P" db.port)
@@ -193,6 +215,14 @@ if [ -n "${PROXY_LOG:-}" ] && [ -r "$PROXY_LOG" ]; then
   er=$(echo "$LG" | grep -E 'SEVERE|ERROR|Exception' | grep -v 'Read timed out')
   [ -z "$er" ] && pass "ไม่มี SEVERE / ERROR หลัง start" || { warn "SEVERE/ERROR $(echo "$er" | grep -c .) บรรทัด"; echo "$er" | cut -c1-180 | sort | uniq -c | sort -rn | head -5 | while IFS= read -r l; do info "  $l"; done; }
 else skip "log ของ proxy (ไม่ได้ระบุ / อ่านไม่ได้)"; fi
+if [ -n "${AUD:-}" ] && [ -r "$AUD" ]; then
+  AL=$(logtail "$AUD" | upn_filter)
+  echo "$AL" | tail -n 5000 | ev_save proxy_audit_tail.log
+  info "audit log : $AUD (แก้ล่าสุด $(stat -c %y "$AUD" | cut -d. -f1))"
+  af=$(echo "$AL" | grep -c 'AUTH_FAILED'); jr=$(echo "$AL" | grep -ci 'Entra JWT rejected')
+  info "audit : AUTH_FAILED $af ครั้ง (Entra JWT rejected $jr) ; ล่าสุด : $(echo "$AL" | grep AUTH_FAILED | tail -1 | cut -c1-160)"
+  [ "$jr" -gt 0 ] && echo "$AL" | grep -i 'Entra JWT rejected' | grep -oE 'from [0-9.]+' | cut -d' ' -f2 | sort | uniq -c | sort -rn | head -3 | while read -r n ip; do info "  จาก $ip : ถูกปฏิเสธ $n ครั้ง"; done
+fi
 fi
 
 # =============================================================================
@@ -207,6 +237,11 @@ else
   elif [ "$self" = yes ] && ! has_role agent; then fail "Proxy host ชี้มาที่เครื่อง CUBIKA เอง ($PROXY_HOST)" "" "ใส่ IP / ชื่อของเครื่องที่รัน DB Proxy"
   else pass "Proxy host ไม่ได้ชี้มาที่เครื่องนี้ (หรือเครื่องนี้รัน proxy เอง)"; fi
   for ip in $pips; do src=$(ip route get "$ip" 2>/dev/null | grep -oE 'src [0-9.]+' | cut -d' ' -f2); [ -n "$src" ] && info "IP ต้นทางที่ใช้ไปหา $ip = $src (ใช้เป็น Source ตอนขอ firewall)"; done
+  if [ -r "${PROXY_CONF:-}" ]; then
+    pp=$(prop_get "$PROXY_CONF" proxy.postgresql.port)
+    [ -n "$pp" ] && { [ "$pp" = "$PROXY_PORT" ] && pass "Proxy port ใน CUBIKA ($PROXY_PORT) ตรงกับ proxy.postgresql.port" \
+      || fail "Proxy port ใน CUBIKA ($PROXY_PORT) ไม่ตรงกับ proxy.postgresql.port ($pp) ของ proxy เครื่องนี้" "" "แก้ช่อง Proxy port ใน CUBIKA ให้ตรง (หรือมี proxy อีกตัวที่ port $PROXY_PORT — ตรวจ ss -ltnp)"; }
+  fi
   tcp_check "$PROXY_HOST" "${PROXY_PORT:-15432}" "CUBIKA → DB Proxy"
 fi
 section "G. log การดาวน์โหลดของ CUBIKA (catalina.out ท้าย $LOG_TAIL บรรทัด)"
@@ -214,7 +249,8 @@ CAT="$TOMCAT_HOME/logs/catalina.out"
 if [ -r "$CAT" ]; then
   D=$(logtail "$CAT" | grep -E '\[DataServiceDownload\]|testDbProxy|UNREACHABLE' | upn_filter)
   echo "$D" | ev_save platform_download.log
-  info "DataServiceDownload${TEST_UPN:+ ($TEST_UPN)} : $(echo "$D" | grep -c 'DataServiceDownload') บรรทัด ; passthrough ผล 200 = $(echo "$D" | grep 'route=passthrough' | grep -c 'result=200')"
+  info "DataServiceDownload${TEST_UPN:+ ($TEST_UPN)} : $(echo "$D" | grep -c 'DataServiceDownload') บรรทัด ; แยก route : $(echo "$D" | grep -oE 'route=[a-z]+' | sort | uniq -c | awk '{printf "%s×%s ",$2,$1}')"
+  info "passthrough ที่ดาวน์โหลดสำเร็จ (result=200) = $(echo "$D" | grep 'route=passthrough' | grep -c 'result=200') ครั้ง ; ล่าสุด : $(echo "$D" | grep 'route=passthrough' | tail -1 | awk '{print $1" "$2}')"
   for pat in "no proxy token" "credential_rejected" "session_expired" "UNREACHABLE|ConnectException|Connection refused" "entitlement check answered"; do
     c=$(echo "$D" | grep -cE "$pat")
     [ "$c" -eq 0 ] && pass "ไม่มี \"$pat\"" || warn "\"$pat\" $c ครั้ง" "$(echo "$D" | grep -E "$pat" | tail -1 | cut -c1-220)" \
@@ -245,7 +281,8 @@ if [ -r "$AP" ]; then
   KU=$(prop_get "$AP" app.datamarket.access.key.uuid); KS=$(prop_get "$AP" app.datamarket.access.key.secret); DMC=$(prop_get "$AP" app.datamarket.context)
   [ -n "$KU" ] && pass "app.datamarket.access.key.uuid = $KU" || fail "app.datamarket.access.key.uuid ว่าง"
   [ -n "$KS" ] && pass "app.datamarket.access.key.secret = $(safe_val key.secret "$KS")" || fail "app.datamarket.access.key.secret ว่าง"
-  grep -E '^app\.datamarket\.access\.key\.(uuid|secret)=.*[[:space:]]$' "$AP" >/dev/null && warn "key มีช่องว่างท้ายบรรทัด (นับเป็นส่วนหนึ่งของค่า)"
+  tr -d '\r' < "$AP" | grep -E '^app\.datamarket\.access\.key\.(uuid|secret)=.*[ \t]$' >/dev/null && warn "key มีช่องว่างท้ายบรรทัด (นับเป็นส่วนหนึ่งของค่า)" "" "ถ้า portal ใช้งานได้อยู่แล้ว ข้ามได้ ; ถ้า entitlement 401/403 ให้ลบช่องว่าง"
+  grep -q $'\r' "$AP" && info "app.properties ของ portal ขึ้นบรรทัดแบบ Windows (CRLF) — Java อ่านได้ปกติ"
   info "app.datamarket.context = $DMC"
   [ -n "$DMC" ] && url_check "$DMC/" "CUBIKA ที่ portal เรียก"
 fi

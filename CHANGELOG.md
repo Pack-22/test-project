@@ -3,6 +3,21 @@
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/) ; เวอร์ชันตาม [SemVer](https://semver.org/)
 เวลาเป็น Asia/Bangkok
 
+## [3.2.1] — 2026-10-30
+
+ปรับจากการรัน `check-passthrough.sh` บน cbi-dev ครั้งแรก
+
+### Fixed
+- Proxy host / port : ตรวจรูปแบบก่อนรับ (เดิมใส่ path ของไฟล์ได้) — host ต้องเป็นชื่อเครื่อง / IP, port ต้องเป็นตัวเลข ; ถามซ้ำจนถูก
+- log ของ proxy : ค่าเริ่มต้นหาเฉพาะ log ของโปรแกรม (ไม่ใช่ `proxy-audit.log`) ทั้งตอนที่ proxy รันและไม่รัน
+- `key มีช่องว่างท้ายบรรทัด` เตือนผิดเมื่อไฟล์ขึ้นบรรทัดแบบ Windows (CRLF) — ตอนนี้แยกแจ้ง CRLF เป็น INFO
+- คำแนะนำสิทธิ์ไฟล์แสดง `chown  ` ว่างเมื่อ proxy ไม่รัน — ใช้เจ้าของไฟล์แทน
+
+### Added
+- สรุป **audit log** ของ proxy (`audit.log.path`) : จำนวน AUTH_FAILED / Entra JWT rejected และ IP ต้นทางที่ถูกปฏิเสธ
+- platform : เทียบ Proxy port ใน CUBIKA กับ `proxy.postgresql.port` ของ proxy (เมื่อ proxy อยู่เครื่องเดียวกัน)
+- platform : จำนวนการดาวน์โหลดแยกตาม route และเวลาที่ passthrough สำเร็จครั้งล่าสุด
+
 ## [3.2.0] — 2026-10-30
 
 ### Added
